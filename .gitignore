@@ -1,0 +1,41 @@
+# ─── SECRETS & ENV ───
+.env
+.env.*
+!.env.example
+
+# ─── PYTHON / BACKEND ───
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+*.log
+*.session
+*.session-journal
+viddex.db
+viddex.db-journal
+
+# ─── NODE / FRONTEND ───
+node_modules/
+dist/
+build/
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── OS FILES ───
+.DS_Store
+Thumbs.db
+
+# ─── IDE & EDITORS ───
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── MISC ───
+# Ignorar subidas o archivos estáticos locales si hubiese
+uploads/
+coverage/

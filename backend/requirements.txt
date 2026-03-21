@@ -1,0 +1,22 @@
+# VIDDEX Backend — Requirements v2.0
+# Core
+fastapi
+uvicorn[standard]
+
+# Base de datos (SQLite/PostgreSQL)
+sqlalchemy
+
+# Autenticación
+python-jose[cryptography]
+bcrypt
+passlib
+email-validator
+
+# Utilidades
+python-dotenv
+python-multipart
+
+# Telegram Bot + Bridge (ya existentes)
+pyrogram
+tgcrypto
+aiohttp
