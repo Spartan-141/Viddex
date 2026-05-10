@@ -1,50 +1,20 @@
-#!/usr/bin/env python3
-"""
-1_populate_from_vimeus.py — Importa el catálogo de Vimeus (Modo Fast Sync / Lazy Hydration)
-
-Este script SOLO descarga el catálogo de Vimeus (ID, Título, Poster, Fondo) y crea 
-las entradas en la base de datos local. 
-NO consulta TMDB para evitar cuellos de botella (el Backend lo hará "Just-In-Time" cuando 
-un usuario solicite ver los detalles).
-"""
-import sys
 import os
 import time
 import logging
-import argparse
 import requests
-
-sys.path.insert(0, os.path.dirname(__file__))
-from dotenv import load_dotenv
-
-load_dotenv()
-
-from app.database import SessionLocal
-from app.models import Movie, Series, VideoLink
 import uuid
 
-# ─── Configuración ──────────────────────────────────────────────────────────
+from ..database import SessionLocal
+from ..models import Movie, Series, VideoLink
+
+log = logging.getLogger(__name__)
 
 VIMEUS_API_KEY = os.getenv("VIMEUS_API_KEY", "")
 VIMEUS_VIEW_KEY = os.getenv("VIMEUS_VIEW_KEY", "")
 VIMEUS_BASE = "https://vimeus.com"
 
-RATE_LIMIT_DELAY = 0.1  # Mucho más rápido porque solo atacamos a Vimeus
+RATE_LIMIT_DELAY = 0.1
 MAX_PAGES = 999 
-
-# ─── Logging ────────────────────────────────────────────────────────────────
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler("vimeus_import.log", encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),
-    ],
-)
-log = logging.getLogger(__name__)
-
-# ─── Helpers ────────────────────────────────────────────────────────────────
 
 def gen_uuid():
     return str(uuid.uuid4())
@@ -69,15 +39,9 @@ def vimeus_get(endpoint: str, params: dict = None):
 def vimeus_embed_movie(tmdb_id: int) -> str:
     return f"https://vimeus.com/e/movie?tmdb={tmdb_id}&view_key={VIMEUS_VIEW_KEY}"
 
-def check_env():
-    if not VIMEUS_API_KEY or not VIMEUS_VIEW_KEY:
-        log.error("❌ Faltan llaves de Vimeus en el archivo .env")
-        sys.exit(1)
-
-# ─── Lógica Principal (Fast Sync) ────────────────────────────────────────────
 
 def import_movies(db):
-    log.info("🎬  IMPORTANDO PELÍCULAS (FAST SYNC)")
+    log.info("🎬 IMPORTANDO PELÍCULAS (FAST SYNC AUTO)")
     stats = {"inserted": 0, "skipped": 0, "failed": 0}
     page = 1
 
@@ -88,8 +52,6 @@ def import_movies(db):
         movies_list = data.get("result", [])
         total_pages = data.get("pages", 1)
         if not movies_list: break
-
-        log.info(f"📄 Página {page}/{total_pages} — {len(movies_list)} películas")
 
         for item in movies_list:
             tmdb_id = item.get("tmdb_id")
@@ -132,11 +94,11 @@ def import_movies(db):
         page += 1
         time.sleep(RATE_LIMIT_DELAY)
 
-    log.info(f"📊 Películas: ✅ {stats['inserted']} | ⏭ {stats['skipped']} | ❌ {stats['failed']}")
+    log.info(f"📊 Películas AutoSync: ✅ {stats['inserted']} | ⏭ {stats['skipped']} | ❌ {stats['failed']}")
 
 def import_shows(db, endpoint: str, content_type: str):
     type_label = "SERIES" if content_type == "series" else "ANIMES"
-    log.info(f"📺  IMPORTANDO {type_label} (FAST SYNC)")
+    log.info(f"📺 IMPORTANDO {type_label} (FAST SYNC AUTO)")
     stats = {"inserted": 0, "skipped": 0, "failed": 0}
     page = 1
 
@@ -147,8 +109,6 @@ def import_shows(db, endpoint: str, content_type: str):
         items = data.get("result", [])
         total_pages = data.get("pages", 1)
         if not items: break
-
-        log.info(f"📄 Página {page}/{total_pages} — {len(items)} {content_type}")
 
         for item in items:
             tmdb_id = item.get("tmdb_id")
@@ -183,27 +143,20 @@ def import_shows(db, endpoint: str, content_type: str):
         page += 1
         time.sleep(RATE_LIMIT_DELAY)
 
-    log.info(f"📊 {type_label}: ✅ {stats['inserted']} | ⏭ {stats['skipped']} | ❌ {stats['failed']}")
+    log.info(f"📊 {type_label} AutoSync: ✅ {stats['inserted']} | ⏭ {stats['skipped']} | ❌ {stats['failed']}")
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--movies-only", action="store_true")
-    parser.add_argument("--series-only", action="store_true")
-    parser.add_argument("--animes-only", action="store_true")
-    args = parser.parse_args()
+def run_all_syncs():
+    """Ejecuta la sincronización completa para el Scheduler"""
+    if not VIMEUS_API_KEY:
+        log.warning("No hay VIMEUS_API_KEY, omitiendo AutoSync.")
+        return
 
-    check_env()
     db = SessionLocal()
-    import_all = not (args.movies_only or args.series_only or args.animes_only)
-
     try:
-        if import_all or args.movies_only: import_movies(db)
-        if import_all or args.series_only: import_shows(db, "/api/listing/series", "series")
-        if import_all or args.animes_only: import_shows(db, "/api/listing/animes", "anime")
+        import_movies(db)
+        import_shows(db, "/api/listing/series", "series")
+        import_shows(db, "/api/listing/animes", "anime")
+    except Exception as e:
+        log.error(f"Error en AutoSync: {e}")
     finally:
         db.close()
-
-    log.info("🏁 Sincronización rápida completada. Los episodios se sincronizarán Just-In-Time.")
-
-if __name__ == "__main__":
-    main()

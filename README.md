@@ -147,4 +147,88 @@ Adentro de la carpeta `backend/scripts` encontrarás herramientas vitales que te
 
 ---
 
+## 🪟 Guía Específica para Windows
+
+### Requisitos Previos en Windows
+
+- **Python 3.10+** (https://www.python.org/downloads/)
+- **Node.js 18+** (https://nodejs.org/)
+- **Visual C++ Build Tools** (requerido para bcrypt): https://visualstudio.microsoft.com/visual-cpp-build-tools/
+- (Opcional) Credenciales de Telegram y TMDB
+
+### Instalación paso a paso
+
+#### 1. Backend
+
+```powershell
+cd backend
+python -m venv venv
+.\venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+#### 2. Frontend
+
+```powershell
+cd frontend
+npm install
+npm run dev -- --host
+```
+
+#### 3. Bridge de Streaming (Telegram)
+
+En otra terminal con el venv activado:
+
+```powershell
+cd backend
+.\venv\Scripts\activate
+python bridge.py
+```
+
+### Problemas comunes en Windows
+
+- **bcrypt falla al instalar**: Instalar Visual C++ Build Tools o usar `pip install bcrypt-windows`
+- **Error de ruta**: Usar `.\venv\Scripts\activate` en lugar de `source venv/bin/activate`
+
+---
+
+## 📦 Empaquetado como .exe
+
+### Opción 1: PyInstaller para Backend + Bridge
+
+```powershell
+pip install pyinstaller
+pyinstaller --onefile --name viddex_bridge.exe backend/bridge.py
+pyinstaller --onefile --name viddex_api.exe backend/app/main.py
+```
+
+### Opción 2: Aplicación Desktop con Tauri
+
+```powershell
+cd frontend
+npm install -g create-tauri-app
+npm create tauri-app@latest
+# Seleccionar framework React y seguir instrucciones
+```
+
+### Opción 3: Paquete todo-en-uno
+
+Crear script `run-windows.bat`:
+
+```batch
+@echo off
+cd backend
+python -m venv venv
+.\venv\Scripts\activate
+pip install -r requirements.txt -q
+start "VIDDEX API" cmd /c "uvicorn app.main:app --host 0.0.0.0 --port 8001"
+start "VIDDEX Bridge" cmd /c "python bridge.py"
+cd ..\frontend
+npm install -q
+npm run dev -- --host
+```
+
+---
+
 © 2026 VIDDEX — Advanced Engineering for Digital Content.

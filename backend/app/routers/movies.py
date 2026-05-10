@@ -17,6 +17,7 @@ from ..schemas import (
 )
 from ..auth import require_admin
 from ..utils.security import get_signed_url
+from ..utils.tmdb_sync import hydrate_movie
 
 router = APIRouter(prefix="/movies", tags=["Movies"])
 
@@ -170,6 +171,11 @@ def get_movie(movie_id: str, db: Session = Depends(get_db)):
     )
     if not movie:
         raise HTTPException(status_code=404, detail="Película no encontrada")
+        
+    # Lazy Hydration: Si falta la sinopsis (que viene nula por defecto del Fast Sync)
+    if not movie.overview:
+        hydrate_movie(movie, db)
+        
     for link in movie.video_links:
         if link.tg_chat_id:
             link.signed_url = get_signed_url(link.id)

@@ -1,5 +1,7 @@
-# app/main.py
 from fastapi import FastAPI
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+import logging
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import engine, Base
@@ -51,3 +53,26 @@ def root():
 @app.get("/health", tags=["Root"])
 def health():
     return {"status": "ok"}
+
+# --- Scheduler Setup ---
+scheduler = BackgroundScheduler()
+
+@app.on_event("startup")
+def start_scheduler():
+    from .utils.catalog_sync import run_all_syncs
+    
+    # Run every 6 hours
+    scheduler.add_job(
+        run_all_syncs,
+        trigger=IntervalTrigger(hours=6),
+        id="vimeus_auto_sync",
+        name="Sync Vimeus catalog every 6 hours",
+        replace_existing=True,
+    )
+    scheduler.start()
+    logging.info("APScheduler started: Vimeus AutoSync scheduled every 6 hours.")
+
+@app.on_event("shutdown")
+def stop_scheduler():
+    scheduler.shutdown()
+    logging.info("APScheduler stopped.")

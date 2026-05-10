@@ -37,18 +37,18 @@ def sync_vimeus_links_for_series(
     series_id: str, tmdb_id: int, series_type: str, db: Session
 ):
     """
-    Busca en Vimeus los episodios disponibles para una serie y
-    empareja/crea los VideoLinks de stream_url para cada episodio local coincidente.
+    Busca en Vimeus los episodios disponibles para una serie.
+    Genera las Temporadas y Episodios localmente basándose 100% en lo que Vimeus
+    tiene disponible, omitiendo TMDB.
     """
     if not tmdb_id or not VIMEUS_API_KEY:
         return
 
-    print(f"[JIT SYNC] Buscando links de Vimeus para Serie: {series_id}")
+    print(f"[JIT SYNC] Construyendo estructura desde Vimeus para Serie: {series_id}")
 
     page = 1
-    all_vimeus_eps = {}
+    links_added = 0
 
-    # Extraer todos los episodios disponibles en Vimeus
     while True:
         data = vimeus_get("/api/listing/episodes", {"tmdb_id": tmdb_id, "page": page})
         if not data:
@@ -64,59 +64,65 @@ def sync_vimeus_links_for_series(
             try:
                 s_num = int(ep.get("season") or 0)
                 e_num = int(ep.get("episode") or 0)
-                all_vimeus_eps[(s_num, e_num)] = ep
-            except (ValueError, TypeError):
+                
+                # Buscar o crear Temporada
+                season = db.query(Season).filter(Season.series_id == series_id, Season.season_number == s_num).first()
+                if not season:
+                    season = Season(
+                        id=gen_uuid(),
+                        series_id=series_id,
+                        season_number=s_num,
+                        name=f"Temporada {s_num}",
+                        episode_count=0
+                    )
+                    db.add(season)
+                    db.flush()
+
+                # Buscar o crear Episodio
+                episode = db.query(Episode).filter(Episode.season_id == season.id, Episode.episode_number == e_num).first()
+                if not episode:
+                    episode = Episode(
+                        id=gen_uuid(),
+                        series_id=series_id,
+                        season_id=season.id,
+                        episode_number=e_num,
+                        name=ep.get("show_title") or f"Episodio {e_num}",
+                    )
+                    db.add(episode)
+                    db.flush()
+                    
+                    # Actualizar contador de episodios en la temporada
+                    season.episode_count += 1
+
+                # Buscar o crear VideoLink
+                has_link = db.query(VideoLink).filter(VideoLink.episode_id == episode.id, VideoLink.stream_url.like("%vimeus.com%")).first()
+                if not has_link:
+                    embed_url = vimeus_embed_episode(tmdb_id, s_num, e_num, series_type)
+                    link = VideoLink(
+                        id=gen_uuid(),
+                        episode_id=episode.id,
+                        stream_url=embed_url,
+                        quality=ep.get("quality", "FHD"),
+                        language="LAT",
+                        title=f"T{s_num}E{e_num} - Vimeus",
+                    )
+                    db.add(link)
+                    links_added += 1
+
+            except Exception as e:
+                print(f"Error procesando episodio Vimeus: {e}")
                 continue
 
         if page >= total_pages:
             break
         page += 1
-        time.sleep(0.3)
-
-    if not all_vimeus_eps:
-        print(f"[JIT SYNC] No se encontraron links en Vimeus para tmdb_id={tmdb_id}")
-        return
-
-    # Mapear los links que vengan a episodios locales
-    db_seasons = db.query(Season).filter(Season.series_id == series_id).all()
-    links_added = 0
-
-    for season in db_seasons:
-        db_episodes = db.query(Episode).filter(Episode.season_id == season.id).all()
-        for ep in db_episodes:
-            if (season.season_number, ep.episode_number) in all_vimeus_eps:
-
-                # Checkear que no tenga ya un enlace embebido de vimeus
-                has_link = (
-                    db.query(VideoLink)
-                    .filter(
-                        VideoLink.episode_id == ep.id,
-                        VideoLink.stream_url.like("%vimeus.com%"),
-                    )
-                    .first()
-                )
-
-                if not has_link:
-                    embed_url = vimeus_embed_episode(
-                        tmdb_id, season.season_number, ep.episode_number, series_type
-                    )
-                    link = VideoLink(
-                        id=gen_uuid(),
-                        episode_id=ep.id,
-                        stream_url=embed_url,
-                        quality="FHD",
-                        language="LAT",
-                        title=f"T{season.season_number}E{ep.episode_number} - Vimeus",
-                    )
-                    db.add(link)
-                    links_added += 1
+        time.sleep(0.1)
 
     # Actualizar fecha de ultima sincronización en la Serie
     series = db.query(Series).filter(Series.id == series_id).first()
     if series:
-        # Se asume que hemos añadido el campo al modelo
         if hasattr(series, "vimeus_links_last_sync"):
             series.vimeus_links_last_sync = datetime.utcnow()
 
     db.commit()
-    print(f"[JIT SYNC] Proceso completado. +{links_added} links nuevos agregados.")
+    print(f"[JIT SYNC] Proceso completado. Estructura construida y {links_added} links agregados.")

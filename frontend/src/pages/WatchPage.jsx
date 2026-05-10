@@ -224,36 +224,30 @@ export default function WatchPage() {
 
         <div className="flex-1 min-w-0 flex flex-col relative overflow-hidden">
           <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black shadow-2xl">
-            {!playing ? (
-              <div className="absolute inset-0 cursor-pointer group" onClick={() => { if (activeLink) setPlaying(true) }}>
-                <img src={tmdbImage(backdropPath, 'w1280')} alt="backdrop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/60" />
-                {activeLink ? (
-                  <div className="absolute inset-0 flex items-center justify-center flex-col gap-3">
-                    <div className="w-20 h-20 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center group-hover:bg-accent/90 transition-all shadow-[0_0_30px_rgba(0,0,0,0.5)]">
-                      <Play size={36} fill="white" className="ml-1.5 opacity-90" />
-                    </div>
-                    {showIframe && (
-                      <span className="bg-black/60 backdrop-blur-md text-white/80 text-xs px-3 py-1 rounded-full font-semibold border border-white/10">
-                        Servidor Externo
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <p className="text-white font-bold bg-black/60 px-6 py-3 rounded-xl backdrop-blur-md">Sin enlace disponible</p>
-                  </div>
-                )}
+            {!activeLink ? (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <p className="text-white font-bold bg-black/60 px-6 py-3 rounded-xl backdrop-blur-md">Sin enlace disponible</p>
               </div>
             ) : showIframe ? (
               <iframe
-                src={videoSrc}
+                src={videoSrc + (videoSrc.includes('?') ? '&autoplay=1&auto=1' : '?autoplay=1&auto=1')}
                 title="Reproductor Externo"
                 width="100%"
                 height="100%"
                 className="w-full h-full border-0"
                 allow="autoplay; fullscreen"
+                sandbox="allow-scripts allow-same-origin allow-presentation"
               />
+            ) : !playing ? (
+              <div className="absolute inset-0 cursor-pointer group" onClick={() => setPlaying(true)}>
+                <img src={tmdbImage(backdropPath, 'w1280')} alt="backdrop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/60" />
+                <div className="absolute inset-0 flex items-center justify-center flex-col gap-3">
+                  <div className="w-20 h-20 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center group-hover:bg-accent/90 transition-all shadow-[0_0_30px_rgba(0,0,0,0.5)]">
+                    <Play size={36} fill="white" className="ml-1.5 opacity-90" />
+                  </div>
+                </div>
+              </div>
             ) : (
               <VideoPlayer key={activeLink?.id} options={videoOptions} onReady={p => { playerRef.current = p }} />
             )}

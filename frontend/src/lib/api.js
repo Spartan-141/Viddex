@@ -2,7 +2,7 @@
 // Cliente HTTP para el backend local de VIDDEX
 // Reemplaza completamente a supabase.js
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://192.168.10.8:8001'
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001'
 
 // ─── TOKEN HELPERS ─────────────────────────────────────────────────────────
 

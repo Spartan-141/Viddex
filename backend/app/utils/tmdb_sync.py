@@ -26,6 +26,45 @@ def tmdb_get(endpoint: str, params: dict = None) -> Optional[dict]:
         print(f"Error llamando a TMDB {endpoint}: {e}")
     return None
 
+def hydrate_movie(movie, db: Session):
+    if not movie.tmdb_id: return
+    data = tmdb_get(f"/movie/{movie.tmdb_id}")
+    if not data: return
+    
+    movie.overview = data.get("overview") or ""
+    movie.tagline = data.get("tagline") or ""
+    movie.release_date = data.get("release_date") or ""
+    movie.runtime = data.get("runtime") or None
+    movie.tmdb_rating = data.get("vote_average") or 0.0
+    movie.tmdb_vote_count = data.get("vote_count") or 0
+    movie.original_language = data.get("original_language") or ""
+    # Si vimeus no trajo poster, lo tomamos
+    if not movie.poster_path: movie.poster_path = data.get("poster_path") or ""
+    if not movie.backdrop_path: movie.backdrop_path = data.get("backdrop_path") or ""
+    
+    db.commit()
+    db.refresh(movie)
+
+def hydrate_series(series, db: Session):
+    if not series.tmdb_id: return
+    data = tmdb_get(f"/tv/{series.tmdb_id}")
+    if not data: return
+    
+    series.overview = data.get("overview") or ""
+    series.tagline = data.get("tagline") or ""
+    series.first_air_date = data.get("first_air_date") or ""
+    series.tmdb_rating = data.get("vote_average") or 0.0
+    series.tmdb_vote_count = data.get("vote_count") or 0
+    series.original_language = data.get("original_language") or ""
+    
+    if not series.total_seasons: series.total_seasons = data.get("number_of_seasons") or 0
+    if not series.total_episodes: series.total_episodes = data.get("number_of_episodes") or 0
+    if not series.poster_path: series.poster_path = data.get("poster_path") or ""
+    if not series.backdrop_path: series.backdrop_path = data.get("backdrop_path") or ""
+    
+    db.commit()
+    db.refresh(series)
+
 
 def sync_series_episodes_from_tmdb(series_id: str, tmdb_id: int, db: Session):
     """

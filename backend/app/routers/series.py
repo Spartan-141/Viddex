@@ -1,4 +1,4 @@
-# app/routers/series.py
+from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy import func
@@ -12,9 +12,9 @@ from ..schemas import (
     TmdbCheckRequest,
 )
 from ..auth import require_admin
-from ..utils.security import get_signed_url
-from ..utils.tmdb_sync import sync_series_episodes_from_tmdb
+from ..utils.tmdb_sync import hydrate_series
 from ..utils.vimeus_fetcher import sync_vimeus_links_for_series
+from ..utils.security import get_signed_url
 
 router = APIRouter(prefix="/series", tags=["Series"])
 
@@ -38,20 +38,13 @@ def list_series(
 
 @router.post("/available", response_model=List[SeriesList])
 def get_available_series(body: TmdbCheckRequest, db: Session = Depends(get_db)):
-    from ..models import Episode, VideoLink as VL, Season as Se
-
-    series_with_links = (
-        db.query(Series.id)
-        .join(Se, Se.series_id == Series.id)
-        .join(Episode, Episode.season_id == Se.id)
-        .join(VL, VL.episode_id == Episode.id)
-        .distinct()
-        .subquery()
-    )
+    """
+    Con Lazy Hydration, asumimos que todas las series en BD importadas de Vimeus
+    están disponibles. No filtramos por VideoLink porque se generan JIT.
+    """
     series = (
         db.query(Series)
         .filter(Series.tmdb_id.in_(body.tmdb_ids))
-        .filter(Series.id.in_(series_with_links))
         .all()
     )
     return series
@@ -59,20 +52,10 @@ def get_available_series(body: TmdbCheckRequest, db: Session = Depends(get_db)):
 
 @router.get("/recent", response_model=List[SeriesList])
 def get_recent_series(limit: int = 15, db: Session = Depends(get_db)):
-    from sqlalchemy import func
-    from ..models import Episode, VideoLink as VL, Season as Se
-
-    sub = (
-        db.query(Se.series_id, func.max(VL.created_at).label("max_date"))
-        .join(Episode, Episode.season_id == Se.id)
-        .join(VL, VL.episode_id == Episode.id)
-        .group_by(Se.series_id)
-        .subquery()
-    )
+    """Devuelve las últimas series añadidas."""
     series = (
         db.query(Series)
-        .join(sub, Series.id == sub.c.series_id)
-        .order_by(sub.c.max_date.desc())
+        .order_by(Series.created_at.desc())
         .limit(limit)
         .all()
     )
@@ -81,19 +64,9 @@ def get_recent_series(limit: int = 15, db: Session = Depends(get_db)):
 
 @router.get("/classics", response_model=List[SeriesList])
 def get_classic_series(limit: int = 15, db: Session = Depends(get_db)):
-    from ..models import Episode, VideoLink as VL, Season as Se
-
-    series_with_links = (
-        db.query(Series.id)
-        .join(Se, Se.series_id == Series.id)
-        .join(Episode, Episode.season_id == Se.id)
-        .join(VL, VL.episode_id == Episode.id)
-        .distinct()
-        .subquery()
-    )
+    """Devuelve las 'Joyas de la TV'."""
     series = (
         db.query(Series)
-        .filter(Series.id.in_(series_with_links))
         .filter(Series.tmdb_rating >= 8.0)
         .filter(Series.tmdb_vote_count >= 1000)
         .order_by(Series.tmdb_rating.desc())
@@ -107,7 +80,6 @@ def get_classic_series(limit: int = 15, db: Session = Depends(get_db)):
 def get_series(
     series_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
 ):
-    from datetime import datetime, timedelta
 
     s = (
         db.query(Series)
@@ -122,11 +94,17 @@ def get_series(
     if not s:
         raise HTTPException(status_code=404, detail="Serie no encontrada")
 
+    # Lazy Hydration: Si falta la sinopsis
+    if not s.overview:
+        hydrate_series(s, db)
+
     # Sincronización JIT de links de Vimeus
     sync_threshold = timedelta(hours=6)
+
+    # Lazy Hydration de Episodios directo desde Vimeus
     if s.tmdb_id:
-        if s.vimeus_links_last_sync is None:
-            # PRIMERA VISITA: Síncrono para que los links aparezcan de inmediato
+        if s.vimeus_links_last_sync is None or not s.seasons:
+            # PRIMERA VISITA: Construir estructura y enlaces síncronamente
             sync_vimeus_links_for_series(s.id, s.tmdb_id, s.content_type, db)
             db.expire(s)
             s = (
@@ -140,7 +118,7 @@ def get_series(
                 .first()
             )
         elif (datetime.utcnow() - s.vimeus_links_last_sync) > sync_threshold:
-            # VISITAS SIGUIENTES: Background para no retrasar la carga
+            # VISITAS SIGUIENTES: Background sync
             background_tasks.add_task(
                 sync_vimeus_links_for_series, s.id, s.tmdb_id, s.content_type, db
             )
@@ -171,11 +149,7 @@ def create_series(
     db.commit()
     db.refresh(series)
 
-    # Iniciar autopoblado de temporadas y capítulso
-    background_tasks.add_task(
-        sync_series_episodes_from_tmdb, series.id, series.tmdb_id, db
-    )
-
+    # Ya no sincronizamos desde TMDB, los enlaces se cargarán al vuelo cuando un usuario entre a la serie
     return series
 
 
@@ -199,7 +173,7 @@ def series_missing_links(
     Devuelve series sin ningún VideoLink en sus episodios.
     Útil para identificar series que requieren subida manual a Telegram.
     """
-    from ..models import Episode, VideoLink as VL, Season as Se
+    # Los modelos ya están importados a nivel de módulo
 
     # Series que tienen al menos un VideoLink en algún episodio
     series_with_links = (
