@@ -23,15 +23,32 @@ export default function HomePage() {
     try {
       // 1. HERO: Blockbusters recientes
       const upcomingTMDB = await tmdbDiscover('movie', {
-        'primary_release_date.gte': '2023-01-01', // Margen amplio para garantizar resultados top
+        'primary_release_date.gte': '2023-01-01', 
         'sort_by': 'popularity.desc'
       })
       const upcomingIds = upcomingTMDB.results.map(m => m.id)
       const availableHero = await api.movies.available({ tmdb_ids: upcomingIds })
       
+      // Combinamos datos: TMDB para info visual (sinopsis, etc) + DB para links e ID interno
+      const mergedHero = availableHero.map(dbMovie => {
+        const tmdbMovie = upcomingTMDB.results.find(t => t.id === dbMovie.tmdb_id)
+        if (!tmdbMovie) return { ...dbMovie, media_type: 'movie' }
+        
+        return {
+          ...tmdbMovie,
+          ...dbMovie,
+          // Priorizamos la sinopsis de TMDB si la local está vacía
+          overview: dbMovie.overview || tmdbMovie.overview,
+          // Aseguramos que el ID siga siendo el del backend (UUID) y no el de TMDB
+          id: dbMovie.id,
+          tmdb_id: dbMovie.tmdb_id,
+          media_type: 'movie'
+        }
+      })
+
       // Ordenamos según la popularidad original de TMDB
-      const heroSorted = availableHero.sort((a,b) => upcomingIds.indexOf(a.tmdb_id) - upcomingIds.indexOf(b.tmdb_id))
-      setHeroList(heroSorted.slice(0, 10).map(m => ({ ...m, media_type: 'movie' })))
+      mergedHero.sort((a,b) => upcomingIds.indexOf(a.tmdb_id) - upcomingIds.indexOf(b.tmdb_id))
+      setHeroList(mergedHero.slice(0, 10))
 
       // 2. Agregados Recientemente (Fila 1)
       const recentMovies = await api.movies.recent(15)
@@ -47,8 +64,16 @@ export default function HomePage() {
       ])
       
       const trendingMix = [
-        ...availableTrendingMovies.map(m => ({...m, media_type: 'movie'})),
-        ...availableTrendingSeries.map(s => ({...s, media_type: 'series'}))
+        ...availableTrendingMovies.map(m => ({
+          ...trendingTMDB.results.find(x => x.id === m.tmdb_id),
+          ...m,
+          media_type: 'movie'
+        })),
+        ...availableTrendingSeries.map(s => ({
+          ...trendingTMDB.results.find(x => x.id === s.tmdb_id),
+          ...s,
+          media_type: 'series'
+        }))
       ]
       
       const allTrendingIds = trendingTMDB.results.map(x => x.id)

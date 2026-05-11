@@ -110,6 +110,14 @@ export const api = {
     resolveReport: (id) => apiFetch(`/admin/reports/${id}/resolve`, { method: 'POST' }),
   },
 
+  // ─── SCRAPER ────────────────────────────────────────────────────────────────
+  scraper: {
+    cuevana: (title, year) => {
+      const qs = new URLSearchParams({ title, ...(year ? { year } : {}) }).toString()
+      return apiFetch(`/api/scraper/cuevana?${qs}`)
+    }
+  },
+
   // ─── GENERIC REQUEST ──────────────────────────────────────────────────────
   request: (path, options = {}) => apiFetch(path, options),
 }

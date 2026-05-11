@@ -1,482 +1,309 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import {
-  ChevronLeft, AlertTriangle, Loader2, ChevronDown,
-  Server, Download, Share2, Play, Star, Users, List, X, ChevronRight
-} from 'lucide-react'
+import { ChevronLeft, Loader2, AlertTriangle, Play, Download, Share2, Star, Users, Server, Check, List, RefreshCw, ChevronRight, ChevronDown } from 'lucide-react'
 import { api } from '@/lib/api'
 import { tmdbImage, tmdbMovieDetails, tmdbTVDetails } from '@/lib/tmdb'
 import VideoPlayer from '@/components/ui/VideoPlayer'
-
-const GENRE_COLORS = ['#e90914', '#f59e0b', '#10b981', '#6366f1', '#ec4899', '#0ea5e9']
-
-function RatingBadge({ label, score, color = 'white' }) {
-  return (
-    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-black text-sm`}
-      style={{ borderColor: `${color}33`, background: `${color}11`, color }}>
-      {label} <span style={{ color }}>{score}</span>
-    </div>
-  )
-}
-
-function CastCard({ member }) {
-  return (
-    <div className="flex-shrink-0 w-28 text-center">
-      <div className="w-24 h-24 mx-auto rounded-full overflow-hidden bg-white/10 mb-2 border-2 border-white/10">
-        <img
-          src={member.profile_path ? tmdbImage(member.profile_path, 'w185') : '/placeholder-poster.jpg'}
-          alt={member.name}
-          className="w-full h-full object-cover"
-          onError={e => { e.target.src = '/placeholder-poster.jpg' }}
-        />
-      </div>
-      <p className="text-xs font-bold text-white leading-tight">{member.name}</p>
-      <p className="text-[10px] text-white/40 mt-0.5 leading-tight">{member.character || member.roles?.[0]?.character}</p>
-    </div>
-  )
-}
-
-function StarRating({ score }) {
-  if (!score) return null
-  const stars = Math.round((score / 10) * 5)
-  return (
-    <div className="flex items-center gap-1">
-      {[1, 2, 3, 4, 5].map(i => (
-        <Star key={i} size={14} fill={i <= stars ? '#f59e0b' : 'none'} stroke="#f59e0b" strokeWidth={1.5} />
-      ))}
-      <span className="text-sm font-black text-amber-400 ml-1">{(score / 2).toFixed(1)}</span>
-    </div>
-  )
-}
+import { useAuth } from '@/context/AuthContext'
 
 export default function WatchPage() {
   const { id, type } = useParams()
   const navigate = useNavigate()
+  const { user } = useAuth()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [content, setContent] = useState(null)
   const [tmdbData, setTmdbData] = useState(null)
-
   const [videoLinks, setVideoLinks] = useState([])
   const [activeLink, setActiveLink] = useState(null)
   const [playing, setPlaying] = useState(false)
-
+  const [refreshing, setRefreshing] = useState(false)
   const [seasons, setSeasons] = useState([])
   const [currSeason, setCurrSeason] = useState(null)
   const [currEpisode, setCurrEpisode] = useState(null)
-
-  const [showSidebar, setShowSidebar] = useState(false)
   const [showSeasonDropdown, setShowSeasonDropdown] = useState(false)
-
-  const castRef = useRef(null)
+  const [inWatchlist, setInWatchlist] = useState(false)
   const playerRef = useRef(null)
+  const castRef = useRef(null)
 
-  useEffect(() => { loadWatchData() }, [id, type])
+  useEffect(() => { loadData() }, [id, type])
 
-  async function loadWatchData() {
-    setLoading(true); setError(null); setPlaying(false); setShowSidebar(false)
+  async function loadData() {
+    setLoading(true); setError(null); setPlaying(false)
     try {
       if (type === 'pelicula') {
         const movie = await api.movies.get(id)
         setContent(movie)
         const links = movie.video_links || []
         setVideoLinks(links); setActiveLink(links[0] || null)
-
         if (movie.tmdb_id) {
-          try {
-            const extra = await tmdbMovieDetails(movie.tmdb_id)
-            setTmdbData(extra)
-          } catch (e) { console.warn('TMDB data error') }
+          try { setTmdbData(await tmdbMovieDetails(movie.tmdb_id)) } catch {}
         }
       } else {
-        const seriesData = await api.series.get(id)
-        setContent(seriesData)
-        setSeasons(seriesData.seasons || [])
-
-        const firstSeason = seriesData.seasons?.[0]
-        const firstEp = firstSeason?.episodes?.[0]
-
-        if (firstSeason) setCurrSeason(firstSeason)
-        if (firstEp) {
-          setCurrEpisode(firstEp)
-          const links = firstEp.video_links || []
-          setVideoLinks(links); setActiveLink(links[0] || null)
-        }
-
-        if (seriesData.tmdb_id) {
-          try {
-            const extra = await tmdbTVDetails(seriesData.tmdb_id)
-            setTmdbData(extra)
-          } catch (e) { console.warn('TMDB data error') }
-        }
+        const s = await api.series.get(id)
+        setContent(s); setSeasons(s.seasons || [])
+        const fs = s.seasons?.[0]; const fe = fs?.episodes?.[0]
+        if (fs) setCurrSeason(fs)
+        if (fe) { setCurrEpisode(fe); const l = fe.video_links||[]; setVideoLinks(l); setActiveLink(l[0]||null) }
+        if (s.tmdb_id) { try { setTmdbData(await tmdbTVDetails(s.tmdb_id)) } catch {} }
       }
-    } catch (err) {
-      setError(err.message)
-    } finally { setLoading(false) }
+    } catch (e) { setError(e.message) }
+    finally { setLoading(false) }
   }
 
-  const handleEpisodeSelect = (season, episode) => {
-    setCurrSeason(season)
-    setCurrEpisode(episode)
-    const links = episode.video_links || []
-    setVideoLinks(links)
-    setActiveLink(links[0] || null)
-    setPlaying(false)
-    setShowSidebar(false)
+  const selectEpisode = (season, ep) => {
+    setCurrSeason(season); setCurrEpisode(ep)
+    const l = ep.video_links||[]; setVideoLinks(l); setActiveLink(l[0]||null); setPlaying(false)
+  }
+
+  const refreshLinks = async () => {
+    if (!content) return
+    setRefreshing(true)
+    try {
+      const year = releaseDate?.slice(0,4)
+      const res = await api.scraper.cuevana(content.title, year)
+      if (res?.url) {
+        await api.movies.addLink(content.id, { stream_url: res.url, quality:'HD', language:'LAT', title:'Vimeus (Auto)' })
+        await loadData()
+      }
+    } catch {}
+    finally { setRefreshing(false) }
   }
 
   const getNeighbors = () => {
-    if (type === 'pelicula' || !currSeason || !currEpisode || seasons.length === 0) return { prev: null, next: null }
-    let prev = null, next = null
-    const sIdx = seasons.findIndex(s => s.id === currSeason.id)
-    const eIdx = currSeason.episodes?.findIndex(e => e.id === currEpisode.id) ?? -1
-
-    if (eIdx > 0) {
-      prev = { season: currSeason, episode: currSeason.episodes[eIdx - 1] }
-    } else if (sIdx > 0 && seasons[sIdx - 1].episodes?.length > 0) {
-      const pS = seasons[sIdx - 1]
-      prev = { season: pS, episode: pS.episodes[pS.episodes.length - 1] }
-    }
-
-    if (eIdx !== -1 && eIdx < (currSeason.episodes?.length || 0) - 1) {
-      next = { season: currSeason, episode: currSeason.episodes[eIdx + 1] }
-    } else if (sIdx !== -1 && sIdx < seasons.length - 1 && seasons[sIdx + 1].episodes?.length > 0) {
-      const nS = seasons[sIdx + 1]
-      next = { season: nS, episode: nS.episodes[0] }
-    }
-    return { prev, next }
+    if (type==='pelicula'||!currSeason||!currEpisode) return {prev:null,next:null}
+    const si = seasons.findIndex(s=>s.id===currSeason.id)
+    const ei = currSeason.episodes?.findIndex(e=>e.id===currEpisode.id)??-1
+    let prev=null,next=null
+    if (ei>0) prev={season:currSeason,episode:currSeason.episodes[ei-1]}
+    else if (si>0&&seasons[si-1].episodes?.length) { const ps=seasons[si-1]; prev={season:ps,episode:ps.episodes[ps.episodes.length-1]} }
+    if (ei!==-1&&ei<(currSeason.episodes?.length||0)-1) next={season:currSeason,episode:currSeason.episodes[ei+1]}
+    else if (si<seasons.length-1&&seasons[si+1].episodes?.length) { const ns=seasons[si+1]; next={season:ns,episode:ns.episodes[0]} }
+    return {prev,next}
   }
 
-  const { prev, next } = getNeighbors()
+  if (loading) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'#07090f'}}><Loader2 size={48} style={{color:'#2563eb',animation:'spin 1s linear infinite'}} /></div>
+  if (error) return <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100vh',background:'#07090f',color:'white',gap:16}}><AlertTriangle size={48} style={{color:'#f59e0b'}} /><p>{error}</p><button onClick={()=>navigate(-1)} style={{background:'white',color:'black',padding:'10px 28px',borderRadius:12,fontWeight:800,border:'none',cursor:'pointer'}}>Volver</button></div>
 
-  const scrollCast = (dir) => {
-    if (castRef.current) castRef.current.scrollBy({ left: dir * 240, behavior: 'smooth' })
-  }
-
-  if (loading) return (
-    <div className="flex items-center justify-center h-screen bg-[#0d0d12] text-white">
-      <Loader2 className="w-12 h-12 animate-spin text-accent mb-4" />
-    </div>
-  )
-
-  if (error) return (
-    <div className="flex flex-col items-center justify-center h-screen bg-[#0d0d12] text-white p-8">
-      <AlertTriangle className="w-16 h-16 text-yellow-500 mb-6" />
-      <h1 className="text-2xl font-black mb-2">Contenido no disponible</h1>
-      <p className="text-muted text-center mb-8">{error}</p>
-      <button onClick={() => navigate(-1)} className="bg-white text-black px-10 py-3 rounded-2xl font-black">Regresar</button>
-    </div>
-  )
-
-  const genres = tmdbData?.genres || []
-  const cast = tmdbData?.credits?.cast || tmdbData?.aggregate_credits?.cast || []
-  const tmdbRating = tmdbData?.vote_average || content?.tmdb_rating
-  const overview = currEpisode?.overview || content?.overview || tmdbData?.overview
-  const runtime = type === 'pelicula' ? tmdbData?.runtime : (currEpisode?.runtime || tmdbData?.episode_run_time?.[0])
-  const releaseDate = type === 'pelicula' ? (tmdbData?.release_date || content?.release_date) : (currEpisode?.air_date || tmdbData?.first_air_date)
+  const genres = tmdbData?.genres||[]
+  const cast = tmdbData?.credits?.cast||tmdbData?.aggregate_credits?.cast||[]
+  const rating = tmdbData?.vote_average||content?.tmdb_rating
+  const overview = currEpisode?.overview||content?.overview||tmdbData?.overview
+  const runtime = type==='pelicula' ? tmdbData?.runtime : (currEpisode?.runtime||tmdbData?.episode_run_time?.[0])
+  const releaseDate = type==='pelicula' ? (tmdbData?.release_date||content?.release_date) : (currEpisode?.air_date||tmdbData?.first_air_date)
   const backdropPath = currEpisode?.still_path || tmdbData?.backdrop_path || content?.backdrop_path
   const posterPath = tmdbData?.poster_path || content?.poster_path
-  const tagline = tmdbData?.tagline
   const originalTitle = tmdbData?.original_title || tmdbData?.original_name || content?.original_title
-  const originalLanguage = tmdbData?.original_language || content?.original_language
-  const voteCount = tmdbData?.vote_count
   const trailer = tmdbData?.videos?.results?.find(v => v.type === 'Trailer' && v.site === 'YouTube')
-
-  const isDirectVideo = (url) => {
-    if (!url) return false
-    if (url.includes('/stream/')) return true // Nuestro Bridge (Telegram)
-    if (url.match(/\.(mp4|mkv|mov|m3u8|webm)(\?.*)?$/i)) return true // Videos directos
-    return false // Todo lo demás (Vimeus, Voe, Filemoon) se asume como Iframe
-  }
-
+  
+  // Usamos w1280 para mayor compatibilidad y velocidad que 'original'
+  const backdropUrl = backdropPath ? tmdbImage(backdropPath, 'w1280') : null
+  
   const videoSrc = activeLink?.signed_url || activeLink?.stream_url
+  const isDirectVideo = url => url&&(url.includes('/stream/')||url.match(/\.(mp4|mkv|mov|m3u8|webm)(\?.*)?$/i))
   const showIframe = !isDirectVideo(videoSrc)
-
-  const videoOptions = {
-    autoplay: true, controls: true, responsive: true, fill: true,
-    sources: [{ src: videoSrc, type: 'video/mp4' }],
-    playbackRates: [0.5, 1, 1.25, 1.5, 2],
-  }
+  const {prev,next} = getNeighbors()
 
   return (
-    <div className="min-h-screen text-white bg-[#0d0d12] relative overflow-x-hidden">
-      <div className="px-6 pt-5 pb-2">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-sm font-bold text-white/50 hover:text-white transition-colors">
-          <ChevronLeft size={18} /> Volver
-        </button>
-      </div>
+    <div style={{minHeight:'100vh',color:'white',background:'#07090f',position:'relative',overflowX:'hidden'}}>
 
-      <div className="px-6 pb-6 lg:flex gap-6 relative">
-        <div className="hidden lg:block shrink-0 w-64 xl:w-72">
-          <div className="relative w-full aspect-[2/3] rounded-xl overflow-hidden shadow-2xl">
-            <img src={tmdbImage(posterPath, 'w500')} alt={content?.title} className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
-          </div>
-          {trailer && type === 'pelicula' && (
-            <button
-              onClick={() => window.open(`https://youtube.com/watch?v=${trailer.key}`, '_blank')}
-              className="w-full mt-4 bg-accent hover:bg-accent/80 text-white font-bold py-3.5 rounded-xl transition-colors flex items-center justify-center gap-2">
-              <Play size={18} /> Ver Tráiler
-            </button>
-          )}
+      {backdropUrl && (
+        <>
+          {/* Capa 1: Imagen visible, sin blur, recortada al tercio superior */}
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0,
+            height: '65vh',
+            zIndex: 0,
+            backgroundImage: `url(${backdropUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center 20%',
+            opacity: 0.55,
+          }} />
+          {/* Capa 2: Gradiente lateral — oscurece los bordes izquierdo/derecho */}
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0,
+            height: '65vh',
+            zIndex: 1,
+            background: 'linear-gradient(to right, rgba(7,9,15,0.6) 0%, transparent 30%, transparent 70%, rgba(7,9,15,0.6) 100%)',
+          }} />
+          {/* Capa 3: Gradiente hacia abajo — imagen desaparece suavemente */}
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0,
+            height: '65vh',
+            zIndex: 2,
+            background: 'linear-gradient(to bottom, rgba(7,9,15,0.15) 0%, rgba(7,9,15,0.5) 60%, #07090f 100%)',
+          }} />
+          {/* Capa 4: Fondo sólido para el resto de la página */}
+          <div style={{
+            position: 'fixed',
+            top: '65vh', left: 0, right: 0, bottom: 0,
+            zIndex: 0,
+            background: '#07090f',
+          }} />
+        </>
+      )}
+
+      <div style={{position:'relative',zIndex:10,padding:'0 24px 60px',maxWidth:1200,margin:'0 auto'}}>
+
+        {/* ── TOP NAV ── */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'20px 0 16px'}}>
+          <button onClick={()=>navigate(-1)} style={{display:'flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',padding:'8px 16px',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer'}}>
+            <ChevronLeft size={16}/> Volver
+          </button>
+          <button onClick={refreshLinks} disabled={refreshing} style={{display:'flex',alignItems:'center',gap:6,background:'transparent',border:'1px solid rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.3)',padding:'6px 14px',borderRadius:20,fontSize:11,fontWeight:700,cursor:'pointer',letterSpacing:0.5}}>
+            {refreshing?<Loader2 size={11} style={{animation:'spin 1s linear infinite'}}/>:<RefreshCw size={11}/>}
+            {refreshing?'Buscando...':'¿Link roto?'}
+          </button>
         </div>
 
-        <div className="flex-1 min-w-0 flex flex-col relative overflow-hidden">
-          <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black shadow-2xl">
+        {/* ── HERO ROW: poster + player ── */}
+        <div style={{display:'flex',gap:18,alignItems:'stretch',marginBottom:20}}>
+
+          {/* LEFT: Poster + Tráiler (columna fija) */}
+          <div style={{width:200,flexShrink:0,display:'flex',flexDirection:'column',gap:10}}>
+            <div style={{flex:1,borderRadius:14,overflow:'hidden',boxShadow:'0 24px 60px rgba(0,0,0,0.7)',border:'1px solid rgba(255,255,255,0.06)'}}>
+              {posterPath
+                ? <img src={tmdbImage(posterPath,'w500')} alt={content?.title} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} />
+                : <div style={{width:'100%',height:'100%',background:'rgba(255,255,255,0.05)'}} />
+              }
+            </div>
+            {trailer && (
+              <button onClick={()=>window.open(`https://youtube.com/watch?v=${trailer.key}`,'_blank')} style={{flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',color:'rgba(255,255,255,0.7)',borderRadius:10,padding:'11px 0',fontSize:13,fontWeight:700,cursor:'pointer',transition:'all 0.2s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='rgba(37,99,235,0.15)';e.currentTarget.style.color='white'}}
+                onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.06)';e.currentTarget.style.color='rgba(255,255,255,0.7)'}}>
+                <Play size={14} fill="currentColor"/> Ver Tráiler
+              </button>
+            )}
+            {!trailer && <div style={{flexShrink:0,height:44}} />}
+          </div>
+
+          {/* RIGHT: Player — misma altura que columna izquierda */}
+          <div style={{flex:1,display:'flex',flexDirection:'column',borderRadius:14,overflow:'hidden',background:'#000',boxShadow:'0 24px 60px rgba(0,0,0,0.6)',border:'1px solid rgba(255,255,255,0.05)',position:'relative'}}>
             {!activeLink ? (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <p className="text-white font-bold bg-black/60 px-6 py-3 rounded-xl backdrop-blur-md">Sin enlace disponible</p>
+              <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,padding:24,textAlign:'center'}}>
+                <AlertTriangle size={40} style={{color:'#f59e0b',opacity:0.5}} />
+                <div><p style={{fontWeight:800,marginBottom:6}}>Sin enlace disponible</p><p style={{color:'rgba(255,255,255,0.4)',fontSize:13}}>El link expiró o no existe.</p></div>
+                <button onClick={refreshLinks} style={{background:'#2563eb',color:'white',border:'none',padding:'10px 24px',borderRadius:10,fontWeight:700,fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
+                  <RefreshCw size={14}/> Buscar en Vimeos
+                </button>
               </div>
             ) : showIframe ? (
-              <iframe
-                src={videoSrc + (videoSrc.includes('?') ? '&autoplay=1&auto=1' : '?autoplay=1&auto=1')}
-                title="Reproductor Externo"
-                width="100%"
-                height="100%"
-                className="w-full h-full border-0"
-                allow="autoplay; fullscreen"
-                sandbox="allow-scripts allow-same-origin allow-presentation"
-              />
+              <iframe src={videoSrc+(videoSrc.includes('?')?'&autoplay=1&auto=1':'?autoplay=1&auto=1')} title="Player" style={{flex:1,width:'100%',border:'none'}} allow="autoplay; fullscreen" sandbox="allow-scripts allow-same-origin allow-presentation" />
             ) : !playing ? (
-              <div className="absolute inset-0 cursor-pointer group" onClick={() => setPlaying(true)}>
-                <img src={tmdbImage(backdropPath, 'w1280')} alt="backdrop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/60" />
-                <div className="absolute inset-0 flex items-center justify-center flex-col gap-3">
-                  <div className="w-20 h-20 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center group-hover:bg-accent/90 transition-all shadow-[0_0_30px_rgba(0,0,0,0.5)]">
-                    <Play size={36} fill="white" className="ml-1.5 opacity-90" />
-                  </div>
+              <div onClick={()=>setPlaying(true)} style={{flex:1,cursor:'pointer',position:'relative',display:'flex',alignItems:'center',justifyContent:'center'}}
+                className="group">
+                {backdropPath && <img src={tmdbImage(backdropPath,'w1280')} alt="" style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}} />}
+                <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.35)'}} />
+                <div style={{position:'relative',width:72,height:72,borderRadius:'50%',background:'rgba(0,0,0,0.6)',backdropFilter:'blur(8px)',border:'2px solid rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',transition:'all 0.25s'}}>
+                  <Play size={32} fill="white" style={{marginLeft:4}} />
                 </div>
               </div>
             ) : (
-              <VideoPlayer key={activeLink?.id} options={videoOptions} onReady={p => { playerRef.current = p }} />
+              <div style={{flex:1}}><VideoPlayer key={activeLink?.id} options={{autoplay:true,controls:true,responsive:true,fill:true,sources:[{src:videoSrc,type:'video/mp4'}],playbackRates:[0.5,1,1.25,1.5,2]}} onReady={p=>{playerRef.current=p}} /></div>
             )}
 
-            {type !== 'pelicula' && (
-              <div className="absolute top-4 right-4 z-40">
-                <button
-                  onClick={(e) => { e.stopPropagation(); setShowSidebar(true) }}
-                  className="bg-accent/90 hover:bg-accent text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 backdrop-blur-md shadow-lg transition-transform hover:scale-105">
-                  Episodios <List size={16} />
+            {/* Episode nav overlay for series */}
+            {type!=='pelicula' && (
+              <div style={{position:'absolute',top:10,right:10,display:'flex',gap:6,zIndex:20}}>
+                <button onClick={()=>setShowSeasonDropdown(!showSeasonDropdown)} style={{background:'rgba(0,0,0,0.7)',backdropFilter:'blur(8px)',border:'1px solid rgba(255,255,255,0.15)',color:'white',padding:'6px 12px',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}>
+                  S{currSeason?.season_number}:E{currEpisode?.episode_number} <ChevronDown size={12}/>
                 </button>
-              </div>
-            )}
-            
-            {type !== 'pelicula' && (
-              <div className={`absolute top-0 right-0 bottom-0 w-80 bg-[#121212]/95 backdrop-blur-xl border-l border-white/10 z-50 transform transition-transform duration-300 flex flex-col ${showSidebar ? 'translate-x-0' : 'translate-x-full'}`}>
-                <div className="p-4 border-b border-white/10 flex items-center justify-between bg-black/50">
-                  <div className="relative">
-                    <button onClick={() => setShowSeasonDropdown(!showSeasonDropdown)} className="flex items-center gap-2 text-sm font-bold bg-white/5 hover:bg-white/10 px-3 py-2 rounded-lg transition-colors">
-                      Temporada {currSeason?.season_number} <ChevronDown size={14} />
-                    </button>
-                    {showSeasonDropdown && (
-                      <div className="absolute top-full left-0 mt-1 bg-zinc-900 border border-white/10 rounded-lg shadow-2xl py-1 w-40 z-50 max-h-60 overflow-y-auto hide-scrollbar">
-                        {seasons.map(s => (
-                          <button key={s.id} onClick={() => { setCurrSeason(s); setShowSeasonDropdown(false) }}
-                            className={`w-full text-left px-4 py-2 text-sm font-bold hover:bg-white/10 ${currSeason?.id === s.id ? 'text-accent' : 'text-white'}`}>
-                            Temporada {s.season_number}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <button onClick={() => setShowSidebar(false)} className="p-2 text-white/50 hover:text-white cursor-pointer"><X size={20} /></button>
-                </div>
-                
-                <div className="flex-1 overflow-y-auto hide-scrollbar touch-pan-y">
-                  {currSeason?.episodes?.map((ep) => {
-                    const isActive = currEpisode?.id === ep.id
-                    const epLinks = ep.video_links || []
-                    return (
-                      <div key={ep.id} onClick={() => handleEpisodeSelect(currSeason, ep)}
-                        className={`p-4 border-b border-white/5 cursor-pointer transition-colors flex gap-4 ${isActive ? 'bg-white/5 border-l-4 border-l-accent' : 'hover:bg-white/5 border-l-4 border-l-transparent'}`}>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between items-start mb-1">
-                            <h4 className={`text-sm font-bold truncate ${isActive ? 'text-accent' : 'text-white'}`}>
-                              {currSeason.season_number}x{ep.episode_number}
-                            </h4>
-                            <span className="text-[10px] text-white/40 whitespace-nowrap">
-                              {ep.air_date ? new Date(ep.air_date).toLocaleDateString() : ''}
-                            </span>
-                          </div>
-                          <p className={`text-sm truncate w-full ${isActive ? 'text-white font-bold' : 'text-white/70'}`}>{ep.name}</p>
-                          <div className="flex items-center justify-between mt-2">
-                            {epLinks.length > 0 ? (
-                              <span className="text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded font-black mt-1 inline-block">✓ DISPONIBLE</span>
-                            ) : (
-                              <span className="text-[10px] bg-white/5 text-white/30 px-2 py-0.5 rounded font-bold mt-1 inline-block">Sin video</span>
-                            )}
-                          </div>
+                {showSeasonDropdown && (
+                  <div style={{position:'absolute',top:'100%',right:0,marginTop:4,background:'rgba(18,18,28,0.97)',backdropFilter:'blur(20px)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:8,minWidth:280,maxHeight:320,overflowY:'auto',zIndex:50,boxShadow:'0 20px 60px rgba(0,0,0,0.6)'}}>
+                    <div style={{display:'flex',gap:6,marginBottom:8,paddingBottom:8,borderBottom:'1px solid rgba(255,255,255,0.08)',flexWrap:'wrap'}}>
+                      {seasons.map(s=>(
+                        <button key={s.id} onClick={()=>{setCurrSeason(s);setShowSeasonDropdown(false)}} style={{padding:'4px 12px',borderRadius:6,fontSize:11,fontWeight:700,border:'1px solid',cursor:'pointer',background:currSeason?.id===s.id?'#2563eb':'transparent',borderColor:currSeason?.id===s.id?'#2563eb':'rgba(255,255,255,0.15)',color:currSeason?.id===s.id?'white':'rgba(255,255,255,0.6)'}}>
+                          T{s.season_number}
+                        </button>
+                      ))}
+                    </div>
+                    {currSeason?.episodes?.map(ep=>{
+                      const isActive=currEpisode?.id===ep.id
+                      return (
+                        <div key={ep.id} onClick={()=>{selectEpisode(currSeason,ep);setShowSeasonDropdown(false)}} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8,cursor:'pointer',background:isActive?'rgba(37,99,235,0.15)':'transparent',marginBottom:2}}>
+                          <div style={{width:26,height:26,borderRadius:6,background:isActive?'#2563eb':'rgba(255,255,255,0.08)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,flexShrink:0}}>{ep.episode_number}</div>
+                          <span style={{fontSize:12,fontWeight:isActive?700:500,color:isActive?'white':'rgba(255,255,255,0.6)',truncate:true}}>{ep.name}</span>
+                          {ep.video_links?.length>0&&<span style={{marginLeft:'auto',width:6,height:6,borderRadius:'50%',background:'#22c55e',flexShrink:0}} />}
                         </div>
-                      </div>
-                    )
-                  })}
-                  {currSeason?.episodes?.length === 0 && (
-                    <div className="p-8 text-center text-white/30 text-sm">No hay capítulos</div>
-                  )}
-                </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
+        </div>
 
-          <div className="mt-4 flex flex-col sm:flex-row justify-between items-center bg-[#1a1a1f] p-3 rounded-xl gap-4">
-            {type !== 'pelicula' ? (
-              <div className="flex items-center gap-3 w-full sm:w-auto">
-                <button
-                  onClick={() => prev && handleEpisodeSelect(prev.season, prev.episode)}
-                  disabled={!prev}
-                  className="bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-white/5 p-3 rounded-lg transition-colors flex items-center justify-center min-w-[48px]">
-                  <ChevronLeft size={18} />
-                </button>
-                <div className="text-center flex-1 sm:min-w-[200px] px-2">
-                  <p className="text-xs font-black text-white">{currSeason ? `S${currSeason.season_number}:E${currEpisode?.episode_number || '?'}` : 'Selecciona episodio'}</p>
-                  <p className="text-[10px] text-white/60 truncate max-w-[200px] mx-auto">{content?.title}: {currEpisode?.name || ''}</p>
-                </div>
-                <button
-                  onClick={() => next && handleEpisodeSelect(next.season, next.episode)}
-                  disabled={!next}
-                  className="bg-accent hover:bg-accent/80 disabled:opacity-30 p-3 rounded-lg transition-colors flex items-center justify-center gap-1 text-xs font-bold min-w-[100px]">
-                  {next ? `S${next.season.season_number}:E${next.episode.episode_number}` : 'Fin'} <ChevronRight size={16} />
-                </button>
+        {/* ── TITLE + ACTIONS ── */}
+        <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:20,marginBottom:28}}>
+          <div style={{flex:1,minWidth:0}}>
+            <h1 style={{fontSize:28,fontWeight:900,lineHeight:1.2,margin:'0 0 4px'}}>{content?.title}{releaseDate&&` (${releaseDate.slice(0,4)})`}</h1>
+            {originalTitle&&originalTitle!==content?.title&&<p style={{color:'rgba(255,255,255,0.35)',fontSize:13,fontWeight:600,margin:'0 0 10px'}}>{originalTitle}</p>}
+            <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:12}}>
+              {rating&&<div style={{display:'flex',alignItems:'center',gap:5,background:'rgba(245,158,11,0.12)',border:'1px solid rgba(245,158,11,0.25)',padding:'4px 10px',borderRadius:8}}>
+                <Star size={13} fill="#f59e0b" style={{color:'#f59e0b'}} /><span style={{fontSize:13,fontWeight:800,color:'#f59e0b'}}>{rating.toFixed(1)}</span>
+              </div>}
+              {runtime&&<span style={{fontSize:13,color:'rgba(255,255,255,0.4)',fontWeight:600}}>{runtime} min</span>}
+              {genres.slice(0,3).map(g=><span key={g.id} style={{fontSize:12,color:'rgba(255,255,255,0.5)',background:'rgba(255,255,255,0.06)',padding:'3px 10px',borderRadius:6,fontWeight:600}}>{g.name}</span>)}
+            </div>
+            {type!=='pelicula'&&(
+              <div style={{display:'flex',alignItems:'center',gap:8,marginTop:12}}>
+                <button onClick={()=>prev&&selectEpisode(prev.season,prev.episode)} disabled={!prev} style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',color:prev?'white':'rgba(255,255,255,0.2)',padding:'6px 10px',borderRadius:8,cursor:prev?'pointer':'not-allowed',display:'flex',alignItems:'center'}}><ChevronLeft size={15}/></button>
+                <span style={{fontSize:12,fontWeight:700,color:'rgba(255,255,255,0.6)'}}>S{currSeason?.season_number}:E{currEpisode?.episode_number} — {currEpisode?.name}</span>
+                <button onClick={()=>next&&selectEpisode(next.season,next.episode)} disabled={!next} style={{background:next?'#2563eb':'rgba(255,255,255,0.05)',border:'none',color:next?'white':'rgba(255,255,255,0.2)',padding:'6px 10px',borderRadius:8,cursor:next?'pointer':'not-allowed',display:'flex',alignItems:'center'}}><ChevronRight size={15}/></button>
               </div>
-            ) : (
-               <div className="flex-1" />
             )}
-
-            <div className="flex items-center justify-end gap-2 w-full sm:w-auto">
-              <button className="flex items-center gap-2 bg-white/10 hover:bg-white/15 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors">
-                <Download size={16} /> <span className="hidden sm:inline">Descargar</span>
-              </button>
-              <button className="flex items-center gap-2 bg-accent hover:bg-accent/80 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors">
-                <Share2 size={16} /> <span className="hidden sm:inline">Compartir</span>
-              </button>
-              {trailer && type !== 'pelicula' && (
-                <button onClick={() => window.open(`https://youtube.com/watch?v=${trailer.key}`, '_blank')} className="flex items-center gap-2 bg-accent hover:bg-accent/80 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors">
-                  <Play size={16} /> Tráiler
-                </button>
-              )}
-            </div>
           </div>
-          
-          {videoLinks.length > 1 && (
-            <div className="mt-6">
-              <label className="text-[10px] font-black text-white/40 uppercase tracking-widest flex items-center gap-1.5 mb-2">
-                <Server size={10} /> Fuente de Reproducción
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {videoLinks.map((link, idx) => (
-                  <button key={link.id}
-                    onClick={() => { setActiveLink(link); setPlaying(false) }}
-                    className={`px-4 py-2 rounded-lg font-bold text-xs transition-all flex items-center gap-2 border ${
-                      activeLink?.id === link.id
-                        ? 'bg-accent/10 text-accent border-accent/30'
-                        : 'bg-white/5 text-white/60 hover:text-white border-white/5 hover:border-white/10'
-                    }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${activeLink?.id === link.id ? 'bg-accent' : 'bg-white/30'}`} />
-                    {link.title || `Opcion ${idx + 1}`}
-                    <span className="opacity-50 font-black text-[9px] uppercase ml-1">{link.quality} · {link.language}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-        </div>
-      </div>
-
-      <div className="px-6 py-4 max-w-7xl border-t border-white/5 mt-6 lg:mt-0 lg:border-t-0">
-        <div className="mb-6">
-          <h1 className="text-3xl font-black mb-1">{content?.title} {releaseDate && `(${releaseDate.slice(0, 4)})`}</h1>
-          {originalTitle && originalTitle !== content?.title && <p className="text-white/40 text-sm font-bold">{originalTitle}</p>}
+          <div style={{display:'flex',gap:8,flexShrink:0}}>
+            {user&&<button style={{display:'flex',alignItems:'center',gap:7,background:'rgba(37,99,235,0.15)',border:'1px solid rgba(37,99,235,0.3)',color:'#93c5fd',padding:'10px 18px',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer'}}><List size={15}/>Mi Lista</button>}
+            <button style={{display:'flex',alignItems:'center',gap:7,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.6)',padding:'10px 18px',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer'}}><Download size={15}/>Descargar</button>
+            <button style={{display:'flex',alignItems:'center',gap:7,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.6)',padding:'10px 18px',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer'}}><Share2 size={15}/>Compartir</button>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-start gap-x-12 gap-y-6 text-sm border-t border-b border-white/5 py-6">
-          {originalTitle && (
-            <div>
-              <p className="text-[10px] uppercase font-black tracking-widest text-white/40 mb-1">Título original</p>
-              <p className="font-bold">{originalTitle}</p>
-            </div>
-          )}
-          {tagline && (
-            <div>
-              <p className="text-[10px] uppercase font-black tracking-widest text-white/40 mb-1">Eslogan</p>
-              <p className="font-bold max-w-xs truncate">{tagline}</p>
-            </div>
-          )}
-          {releaseDate && (
-            <div>
-              <p className="text-[10px] uppercase font-black tracking-widest text-white/40 mb-1">Fecha de Estreno</p>
-              <p className="font-bold">{releaseDate}</p>
-            </div>
-          )}
-          {genres.length > 0 && (
-            <div>
-              <p className="text-[10px] uppercase font-black tracking-widest text-white/40 mb-1">Géneros</p>
-              <div className="flex flex-wrap gap-2">
-                {genres.map((g, i) => (
-                  <span key={g.id} className="font-bold flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: GENRE_COLORS[i % GENRE_COLORS.length] }} />
-                    {g.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-          {tmdbRating && (
-            <div>
-              <p className="text-[10px] uppercase font-black tracking-widest text-white/40 mb-1">Rating</p>
-              <p className="font-bold">{tmdbRating?.toFixed(1)}</p>
-            </div>
-          )}
-          {runtime && (
-            <div>
-              <p className="text-[10px] uppercase font-black tracking-widest text-white/40 mb-1">Duración</p>
-              <p className="font-bold">{runtime} min</p>
-            </div>
-          )}
-          {originalLanguage && (
-            <div>
-              <p className="text-[10px] uppercase font-black tracking-widest text-white/40 mb-1">Idioma</p>
-              <p className="font-bold uppercase">{originalLanguage}</p>
-            </div>
-          )}
-        </div>
-
-        <div className="py-6 space-y-4">
-           {tmdbRating && (
-            <div className="flex items-center gap-4">
-              <RatingBadge label="TMDB" score={tmdbRating?.toFixed(1)} color="#ffffff" />
-              <StarRating score={tmdbRating} />
-              {voteCount && (
-                <div className="flex items-center gap-1.5 text-sm text-white/40 ml-2">
-                  <Users size={14} /> <span>{voteCount.toLocaleString()}</span>
-                </div>
-              )}
-            </div>
-          )}
-          <p className="text-white/80 leading-relaxed max-w-5xl font-medium">{overview}</p>
-        </div>
-
-        {cast.length > 0 && (
-          <div className="py-6 border-t border-white/5">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-accent/20 text-accent flex items-center justify-center">
-                  <Users size={16} />
-                </div>
-                <h3 className="text-lg font-black uppercase tracking-widest">Elenco</h3>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => scrollCast(-1)} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"><ChevronLeft size={16}/></button>
-                <button onClick={() => scrollCast(1)} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"><ChevronRight size={16}/></button>
-              </div>
-            </div>
-            <div ref={castRef} className="flex gap-4 overflow-x-auto hide-scrollbar pb-4">
-              {cast.slice(0, 20).map(member => <CastCard key={member.id} member={member} />)}
+        {/* ── SERVERS ── */}
+        {videoLinks.length>1&&(
+          <div style={{marginBottom:32}}>
+            <p style={{fontSize:11,fontWeight:800,color:'rgba(255,255,255,0.3)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:10,display:'flex',alignItems:'center',gap:6}}><Server size={11}/>Fuente de reproducción</p>
+            <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+              {videoLinks.map((l,i)=>(
+                <button key={l.id} onClick={()=>{setActiveLink(l);setPlaying(false)}} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 16px',borderRadius:10,border:'1px solid',cursor:'pointer',transition:'all 0.2s',background:activeLink?.id===l.id?'rgba(37,99,235,0.12)':'rgba(255,255,255,0.04)',borderColor:activeLink?.id===l.id?'rgba(37,99,235,0.4)':'rgba(255,255,255,0.07)',color:activeLink?.id===l.id?'#93c5fd':'rgba(255,255,255,0.55)'}}>
+                  <span style={{width:7,height:7,borderRadius:'50%',background:activeLink?.id===l.id?'#2563eb':'rgba(255,255,255,0.25)',boxShadow:activeLink?.id===l.id?'0 0 8px #2563eb':''}} />
+                  <span style={{fontSize:13,fontWeight:700}}>{l.title||`Opción ${i+1}`}</span>
+                  <span style={{fontSize:10,fontWeight:800,opacity:0.5,textTransform:'uppercase'}}>{l.quality}·{l.language}</span>
+                </button>
+              ))}
             </div>
           </div>
         )}
 
+        {/* ── SYNOPSIS ── */}
+        <div style={{borderTop:'1px solid rgba(255,255,255,0.05)',paddingTop:28,marginBottom:32}}>
+          <h3 style={{fontSize:15,fontWeight:800,color:'rgba(255,255,255,0.4)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:14}}>Sinopsis</h3>
+          <p style={{color:'rgba(255,255,255,0.65)',lineHeight:1.8,fontSize:14,maxWidth:900}}>{overview||'Sinopsis no disponible.'}</p>
+        </div>
+
+        {/* ── CAST ── */}
+        {cast.length>0&&(
+          <div style={{borderTop:'1px solid rgba(255,255,255,0.05)',paddingTop:28}}>
+            <h3 style={{fontSize:15,fontWeight:800,color:'rgba(255,255,255,0.4)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:18,display:'flex',alignItems:'center',gap:8}}><Users size={14}/>Reparto</h3>
+            <div ref={castRef} style={{display:'flex',gap:14,overflowX:'auto',paddingBottom:12}} className="hide-scrollbar">
+              {cast.slice(0,15).map(m=>(
+                <div key={m.id} style={{flexShrink:0,width:100,textAlign:'center'}}>
+                  <div style={{width:100,height:150,borderRadius:10,overflow:'hidden',background:'rgba(255,255,255,0.04)',marginBottom:8,border:'1px solid rgba(255,255,255,0.06)'}}>
+                    <img src={m.profile_path?tmdbImage(m.profile_path,'w185'):'/placeholder-poster.jpg'} alt={m.name} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{e.target.src='/placeholder-poster.jpg'}} />
+                  </div>
+                  <p style={{fontSize:11,fontWeight:700,color:'white',lineHeight:1.3,margin:0}}>{m.name}</p>
+                  <p style={{fontSize:10,color:'rgba(255,255,255,0.35)',margin:'3px 0 0',lineHeight:1.3}}>{m.character}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

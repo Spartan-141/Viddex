@@ -2,9 +2,8 @@ import { useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import MovieCard from './MovieCard'
 
-/**
- * ContentCarousel — Carrusel horizontal de tarjetas de contenido
- */
+const SIDE_PAD = 36  // px de margen en ambos bordes del scroll
+
 export default function ContentCarousel({ title, items = [], type = 'movie', loading = false }) {
   const scrollRef = useRef(null)
   const [canScrollLeft,  setCanScrollLeft]  = useState(false)
@@ -13,8 +12,8 @@ export default function ContentCarousel({ title, items = [], type = 'movie', loa
   const updateScrollState = () => {
     const el = scrollRef.current
     if (!el) return
-    setCanScrollLeft(el.scrollLeft > 8)
-    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 8)
+    setCanScrollLeft(el.scrollLeft > 4)
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4)
   }
 
   const scroll = (dir) => {
@@ -24,160 +23,132 @@ export default function ContentCarousel({ title, items = [], type = 'movie', loa
     setTimeout(updateScrollState, 400)
   }
 
+  const emojiMatch = title.match(/^\p{Emoji}/u)
+  const emoji      = emojiMatch ? emojiMatch[0] : '🎬'
+  const cleanTitle = title.replace(/^\p{Emoji}\s*/u, '').toUpperCase()
+
   return (
-    <section className="cc-section">
-      {/* ── Header ── */}
-      <div className="cc-header">
-        <div className="cc-title-wrap">
-          <span className="cc-title-accent" />
-          <h2 className="cc-title">{title}</h2>
-        </div>
-        <div className="cc-nav-btns">
-          <NavBtn onClick={() => scroll(-1)} disabled={!canScrollLeft} aria-label="Anterior">
-            <ChevronLeft size={18} />
-          </NavBtn>
-          <NavBtn onClick={() => scroll(1)} disabled={!canScrollRight} aria-label="Siguiente">
-            <ChevronRight size={18} />
-          </NavBtn>
-        </div>
-      </div>
+    <section style={{ marginBottom: 48 }}>
 
-      {/* ── Scroll container ── */}
-      <div className="cc-track-wrap">
-        {/* Left fade */}
-        <div className="cc-fade cc-fade-left" style={{ opacity: canScrollLeft ? 1 : 0 }} />
-        {/* Right fade */}
-        <div className="cc-fade cc-fade-right" style={{ opacity: canScrollRight ? 1 : 0 }} />
+      {/* ── HEADER ── */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: `0 ${SIDE_PAD}px`, marginBottom: 18,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+          <div style={{
+            width: 34, height: 34,
+            background: 'rgba(37,99,235,0.12)',
+            border: '1px solid rgba(37,99,235,0.25)',
+            borderRadius: 9,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <span style={{ fontSize: 16, lineHeight: 1 }}>{emoji}</span>
+          </div>
+          <h2 style={{
+            fontSize: 15, fontWeight: 900, letterSpacing: 1,
+            color: '#e2e8f0', whiteSpace: 'nowrap', flexShrink: 0,
+          }}>{cleanTitle}</h2>
+          <div style={{
+            flex: 1, height: 1, minWidth: 20,
+            background: 'linear-gradient(to right, rgba(37,99,235,0.35), transparent)',
+          }} />
+        </div>
 
-        <div
-          ref={scrollRef}
-          onScroll={updateScrollState}
-          className="cc-track hide-scrollbar"
-        >
-          {loading
-            ? Array.from({ length: 9 }, (_, i) => <CardSkeleton key={i} />)
-            : items.map(item => (
-                <div key={item.id} className="cc-card-wrap">
-                  <MovieCard item={item} type={type} />
-                </div>
-              ))
-          }
+        <div style={{ display: 'flex', gap: 5, flexShrink: 0, marginLeft: 12 }}>
+          <NavBtn active={canScrollLeft}  onClick={() => scroll(-1)} label="Anterior"  Icon={ChevronLeft}  />
+          <NavBtn active={canScrollRight} onClick={() => scroll(1)}  label="Siguiente" Icon={ChevronRight} />
         </div>
       </div>
 
-      <style>{`
-        .cc-section {
-          margin-bottom: 44px;
+      {/*
+        SCROLL CONTAINER
+        ────────────────
+        - paddingLeft / paddingRight: separación de bordes
+        - paddingTop: espacio para el scale-up del hover (no se recorta)
+        - paddingBottom: espacio para sombra inferior de las tarjetas
+        - SIN fades/sombras laterales (usuario solicitó quitarlos)
+      */}
+      <div
+        ref={scrollRef}
+        onScroll={updateScrollState}
+        className="hide-scrollbar"
+        style={{
+          display: 'flex',
+          gap: 13,
+          overflowX: 'auto',
+          paddingLeft:   SIDE_PAD,
+          paddingRight:  SIDE_PAD,
+          paddingTop:    20,    // espacio para hover scale
+          paddingBottom: 14,
+          scrollSnapType: 'x mandatory',
+          boxSizing: 'border-box',
+        }}
+      >
+        {loading
+          ? Array.from({ length: 8 }, (_, i) => <SkeletonCard key={i} />)
+          : items.map(item => (
+              <div key={item.id} style={{
+                flexShrink: 0,
+                width: 'var(--card-width)',
+                scrollSnapAlign: 'start',
+              }}>
+                <MovieCard item={item} type={type} />
+              </div>
+            ))
         }
-        .cc-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0 28px;
-          margin-bottom: 14px;
-        }
-        .cc-title-wrap {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-        .cc-title-accent {
-          width: 4px;
-          height: 22px;
-          background: linear-gradient(180deg, #2563eb, #60a5fa);
-          border-radius: 999px;
-          flex-shrink: 0;
-        }
-        .cc-title {
-          font-size: 18px;
-          font-weight: 800;
-          color: #ffffff;
-          letter-spacing: -0.4px;
-        }
-        .cc-nav-btns {
-          display: flex;
-          gap: 6px;
-        }
-        .cc-track-wrap {
-          position: relative;
-        }
-        .cc-fade {
-          position: absolute;
-          top: 0; bottom: 0;
-          width: 60px;
-          z-index: 2;
-          pointer-events: none;
-          transition: opacity 0.2s;
-        }
-        .cc-fade-left {
-          left: 0;
-          background: linear-gradient(to right, var(--bg-primary), transparent);
-        }
-        .cc-fade-right {
-          right: 0;
-          background: linear-gradient(to left, var(--bg-primary), transparent);
-        }
-        .cc-track {
-          display: flex;
-          gap: 14px;
-          overflow-x: auto;
-          padding: 6px 28px 18px;
-          scroll-snap-type: x mandatory;
-        }
-        .cc-card-wrap {
-          scroll-snap-align: start;
-          width: var(--card-width);
-          flex-shrink: 0;
-        }
-      `}</style>
+      </div>
     </section>
   )
 }
 
-function NavBtn({ children, onClick, disabled, ...props }) {
+function NavBtn({ active, onClick, label, Icon }) {
   return (
     <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`cc-nav-btn ${disabled ? '' : 'cc-nav-btn-active'}`}
-      {...props}
+      onClick={active ? onClick : undefined}
+      disabled={!active}
+      aria-label={label}
+      style={{
+        width: 32, height: 32,
+        borderRadius: 8,
+        border: `1px solid ${active ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)'}`,
+        background: active ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)',
+        color: active ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.2)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: active ? 'pointer' : 'not-allowed',
+        opacity: active ? 1 : 0.35,
+        transition: 'all 0.2s ease',
+      }}
+      onMouseEnter={e => {
+        if (!active) return
+        e.currentTarget.style.background = 'rgba(37,99,235,0.18)'
+        e.currentTarget.style.borderColor = 'rgba(37,99,235,0.45)'
+        e.currentTarget.style.color = '#93c5fd'
+      }}
+      onMouseLeave={e => {
+        if (!active) return
+        e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'
+        e.currentTarget.style.color = 'rgba(255,255,255,0.7)'
+      }}
     >
-      {children}
-      <style>{`
-        .cc-nav-btn {
-          width: 34px; height: 34px;
-          display: flex; align-items: center; justify-content: center;
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 9px;
-          color: var(--text-muted);
-          cursor: not-allowed;
-          opacity: 0.4;
-          transition: all 0.2s ease;
-        }
-        .cc-nav-btn-active {
-          color: var(--text-secondary);
-          cursor: pointer;
-          opacity: 1;
-        }
-        .cc-nav-btn-active:hover {
-          background: rgba(37,99,235,0.15);
-          border-color: rgba(37,99,235,0.4);
-          color: #93c5fd;
-        }
-      `}</style>
+      <Icon size={18} />
     </button>
   )
 }
 
-function CardSkeleton() {
+function SkeletonCard() {
   return (
     <div className="shimmer" style={{
       flexShrink: 0,
       width: 'var(--card-width)',
-      aspectRatio: '2/3',
-      borderRadius: 'var(--radius)',
-      background: 'var(--bg-card)',
-    }} />
+      scrollSnapAlign: 'start',
+      display: 'flex', flexDirection: 'column', gap: 8,
+    }}>
+      <div style={{ aspectRatio: '2/3', borderRadius: 10, background: 'rgba(255,255,255,0.06)' }} />
+      <div style={{ height: 11, borderRadius: 5, background: 'rgba(255,255,255,0.04)', width: '80%' }} />
+      <div style={{ height: 10, borderRadius: 5, background: 'rgba(255,255,255,0.03)', width: '55%' }} />
+    </div>
   )
 }
