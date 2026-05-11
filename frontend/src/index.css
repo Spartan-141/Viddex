@@ -2,13 +2,13 @@
 
 @layer base {
   :root {
-    --bg-primary: #0a0a0f;
-    --bg-secondary: #111118;
-    --bg-card: #16161f;
-    --bg-elevated: #1e1e2a;
-    --accent: #e50914;
-    --accent-hover: #f40a16;
-    --accent-muted: rgba(229, 9, 20, 0.15);
+    --bg-primary: #090d1a;
+    --bg-secondary: #0d1117;
+    --bg-card: #111827;
+    --bg-elevated: #1a2236;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-muted: rgba(37, 99, 235, 0.15);
     --text-primary: #ffffff;
     --text-secondary: #a0a0b4;
     --text-muted: #5a5a7a;
@@ -24,8 +24,9 @@
       rgba(10, 10, 15, 0.95) 0%,
       transparent 60%
     );
-    --sidebar-actual-width: 240px;
-    --sidebar-offset: 240px;
+    --sidebar-desktop-width: 90px;
+    --sidebar-mobile-width: 280px;
+    --sidebar-offset: 90px;
     --card-width: 180px;
     --topbar-height: 64px;
     --radius: 12px;

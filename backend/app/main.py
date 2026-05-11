@@ -3,6 +3,12 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import logging
 from fastapi.middleware.cors import CORSMiddleware
+import asyncio
+import sys
+
+# Compatibilidad con Windows para Playwright/Subprocesos
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from .database import engine, Base
 from . import (
@@ -15,6 +21,7 @@ from .routers.series import router as series_router
 from .routers.seasons import router as seasons_router
 from .routers.watchlist import router as watchlist_router
 from .routers.admin import router as admin_router
+from .routers.scraper_router import router as scraper_router
 
 # Crear todas las tablas al arrancar (si no existen)
 Base.metadata.create_all(bind=engine)
@@ -43,6 +50,7 @@ app.include_router(series_router)
 app.include_router(seasons_router)
 app.include_router(watchlist_router)
 app.include_router(admin_router)
+app.include_router(scraper_router)
 
 
 @app.get("/", tags=["Root"])
