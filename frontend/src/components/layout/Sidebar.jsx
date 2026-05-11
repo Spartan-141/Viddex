@@ -1,4 +1,5 @@
-import { NavLink, Link } from 'react-router-dom'
+import { useState } from 'react'
+import { NavLink, Link, useNavigate } from 'react-router-dom'
 import {
   Home, Film, Tv, Sparkles, Users,
   FolderPlus, Calendar, Activity, Mail,
@@ -21,7 +22,22 @@ const NAV_ITEMS = [
 export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }) {
   const { user } = useAuth()
 
+  const navigate = useNavigate()
+  const [query, setQuery] = useState('')
+
   const handleLinkClick = () => {
+    if (setMobileMenuOpen) setMobileMenuOpen(false)
+  }
+
+  const handleSearch = (e) => {
+    e.preventDefault()
+    if (!query.trim()) return
+    
+    // Navegar a la página de búsqueda
+    navigate(`/buscar?q=${encodeURIComponent(query.trim())}`)
+    
+    // Limpiar y cerrar el menú
+    setQuery('')
     if (setMobileMenuOpen) setMobileMenuOpen(false)
   }
 
@@ -62,14 +78,18 @@ export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }) {
           </div>
 
           {/* Buscador dentro del drawer */}
-          <div className="sb-search-wrap">
+          <form className="sb-search-wrap" onSubmit={handleSearch}>
             <input
               type="text"
               placeholder="Buscar..."
               className="sb-search-input"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
             />
-            <Search size={15} className="sb-search-icon" />
-          </div>
+            <button type="submit" style={{ background: 'none', border: 'none', padding: 0 }}>
+              <Search size={15} className="sb-search-icon" />
+            </button>
+          </form>
 
           {/* Botones de acceso (solo si no hay sesión) */}
           {!user && (
@@ -318,7 +338,7 @@ export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }) {
             right: 14px; top: 50%;
             transform: translateY(-50%);
             color: rgba(255,255,255,0.35);
-            pointer-events: none;
+            cursor: pointer;
           }
 
           /* Auth buttons */

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronLeft, Loader2, AlertTriangle, Play, Download, Share2, Star, Users, Server, Check, List, RefreshCw, ChevronRight, ChevronDown } from 'lucide-react'
+import { ChevronLeft, Loader2, AlertTriangle, Play, Download, Share2, Star, Users, Server, Check, List, RefreshCw, ChevronRight, ChevronDown, X } from 'lucide-react'
 import { api } from '@/lib/api'
 import { tmdbImage, tmdbMovieDetails, tmdbTVDetails } from '@/lib/tmdb'
 import VideoPlayer from '@/components/ui/VideoPlayer'
@@ -147,7 +147,7 @@ export default function WatchPage() {
         </>
       )}
 
-      <div style={{position:'relative',zIndex:10,padding:'0 24px 60px',maxWidth:1200,margin:'0 auto'}}>
+      <div style={{position:'relative',zIndex:10,maxWidth:1200,margin:'0 auto'}} className="wp-container">
 
         {/* ── TOP NAV ── */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'20px 0 16px'}}>
@@ -161,10 +161,10 @@ export default function WatchPage() {
         </div>
 
         {/* ── HERO ROW: poster + player ── */}
-        <div style={{display:'flex',gap:18,alignItems:'stretch',marginBottom:20}}>
+        <div className="wp-hero-row">
 
-          {/* LEFT: Poster + Tráiler (columna fija) */}
-          <div style={{width:200,flexShrink:0,display:'flex',flexDirection:'column',gap:10}}>
+          {/* LEFT: Poster + Tráiler (columna fija, oculta en móvil) */}
+          <div className="wp-poster-col">
             <div style={{flex:1,borderRadius:14,overflow:'hidden',boxShadow:'0 24px 60px rgba(0,0,0,0.7)',border:'1px solid rgba(255,255,255,0.06)'}}>
               {posterPath
                 ? <img src={tmdbImage(posterPath,'w500')} alt={content?.title} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} />
@@ -181,8 +181,8 @@ export default function WatchPage() {
             {!trailer && <div style={{flexShrink:0,height:44}} />}
           </div>
 
-          {/* RIGHT: Player — misma altura que columna izquierda */}
-          <div style={{flex:1,display:'flex',flexDirection:'column',borderRadius:14,overflow:'hidden',background:'#000',boxShadow:'0 24px 60px rgba(0,0,0,0.6)',border:'1px solid rgba(255,255,255,0.05)',position:'relative'}}>
+          {/* RIGHT: Player */}
+          <div className="wp-player-col">
             {!activeLink ? (
               <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,padding:24,textAlign:'center'}}>
                 <AlertTriangle size={40} style={{color:'#f59e0b',opacity:0.5}} />
@@ -206,40 +206,124 @@ export default function WatchPage() {
               <div style={{flex:1}}><VideoPlayer key={activeLink?.id} options={{autoplay:true,controls:true,responsive:true,fill:true,sources:[{src:videoSrc,type:'video/mp4'}],playbackRates:[0.5,1,1.25,1.5,2]}} onReady={p=>{playerRef.current=p}} /></div>
             )}
 
-            {/* Episode nav overlay for series */}
-            {type!=='pelicula' && (
-              <div style={{position:'absolute',top:10,right:10,display:'flex',gap:6,zIndex:20}}>
-                <button onClick={()=>setShowSeasonDropdown(!showSeasonDropdown)} style={{background:'rgba(0,0,0,0.7)',backdropFilter:'blur(8px)',border:'1px solid rgba(255,255,255,0.15)',color:'white',padding:'6px 12px',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}>
-                  S{currSeason?.season_number}:E{currEpisode?.episode_number} <ChevronDown size={12}/>
+            {/* ── EPISODE SIDE PANEL ── */}
+            {type !== 'pelicula' && (
+              <>
+                {/* Trigger button */}
+                <button onClick={() => setShowSeasonDropdown(!showSeasonDropdown)} style={{
+                  position:'absolute', top:10, right:10, zIndex:30,
+                  display:'flex', alignItems:'center', gap:8,
+                  background:'rgba(10,12,22,0.88)', backdropFilter:'blur(16px)',
+                  border:'1px solid rgba(255,255,255,0.18)', borderRadius:12,
+                  color:'white', padding:'9px 14px', fontSize:13, fontWeight:800,
+                  cursor:'pointer', boxShadow:'0 4px 20px rgba(0,0,0,0.5)',
+                }}>
+                  S{currSeason?.season_number}:E{currEpisode?.episode_number}
+                  <ChevronDown size={13} style={{opacity:0.6, transform:showSeasonDropdown?'rotate(180deg)':'none', transition:'transform 0.25s'}}/>
                 </button>
-                {showSeasonDropdown && (
-                  <div style={{position:'absolute',top:'100%',right:0,marginTop:4,background:'rgba(18,18,28,0.97)',backdropFilter:'blur(20px)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:8,minWidth:280,maxHeight:320,overflowY:'auto',zIndex:50,boxShadow:'0 20px 60px rgba(0,0,0,0.6)'}}>
-                    <div style={{display:'flex',gap:6,marginBottom:8,paddingBottom:8,borderBottom:'1px solid rgba(255,255,255,0.08)',flexWrap:'wrap'}}>
-                      {seasons.map(s=>(
-                        <button key={s.id} onClick={()=>{setCurrSeason(s);setShowSeasonDropdown(false)}} style={{padding:'4px 12px',borderRadius:6,fontSize:11,fontWeight:700,border:'1px solid',cursor:'pointer',background:currSeason?.id===s.id?'#2563eb':'transparent',borderColor:currSeason?.id===s.id?'#2563eb':'rgba(255,255,255,0.15)',color:currSeason?.id===s.id?'white':'rgba(255,255,255,0.6)'}}>
-                          T{s.season_number}
-                        </button>
-                      ))}
+
+                {/* Side panel — slides in over the player from the right */}
+                <div style={{
+                  position:'absolute', top:0, right:0, bottom:0,
+                  width: showSeasonDropdown ? 300 : 0,
+                  zIndex:25,
+                  background:'rgba(9,11,20,0.97)', backdropFilter:'blur(20px)',
+                  borderLeft:'1px solid rgba(255,255,255,0.07)',
+                  display:'flex', flexDirection:'column',
+                  overflow:'hidden',
+                  transition:'width 0.32s cubic-bezier(0.4,0,0.2,1)',
+                  boxShadow: showSeasonDropdown ? '-12px 0 40px rgba(0,0,0,0.5)' : 'none',
+                }}>
+
+                  {/* Panel Header */}
+                  <div style={{padding:'14px 14px 12px', borderBottom:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', gap:10, flexShrink:0}}>
+                    {/* Season dropdown */}
+                    <div style={{position:'relative', flex:1}}>
+                      <select
+                        value={currSeason?.id || ''}
+                        onChange={e => { const s = seasons.find(x => x.id === e.target.value); if(s) setCurrSeason(s) }}
+                        style={{
+                          appearance:'none', WebkitAppearance:'none',
+                          width:'100%', background:'rgba(255,255,255,0.06)',
+                          border:'1px solid rgba(255,255,255,0.12)', borderRadius:10,
+                          color:'white', padding:'8px 32px 8px 12px',
+                          fontSize:13, fontWeight:800, cursor:'pointer', outline:'none',
+                        }}>
+                        {seasons.map(s => (
+                          <option key={s.id} value={s.id} style={{background:'#0c0e1a', color:'white'}}>
+                            Temporada {s.season_number}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown size={13} style={{position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', color:'rgba(255,255,255,0.5)', pointerEvents:'none'}}/>
                     </div>
-                    {currSeason?.episodes?.map(ep=>{
-                      const isActive=currEpisode?.id===ep.id
+                    {/* Close */}
+                    <button onClick={() => setShowSeasonDropdown(false)} style={{
+                      flexShrink:0, background:'rgba(255,255,255,0.06)',
+                      border:'1px solid rgba(255,255,255,0.1)', borderRadius:8,
+                      color:'rgba(255,255,255,0.6)', width:32, height:32,
+                      display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer',
+                    }}><X size={15}/></button>
+                  </div>
+
+                  {/* Episode List */}
+                  <div style={{flex:1, overflowY:'auto', overflowX:'hidden'}} className="hide-scrollbar">
+                    {currSeason?.episodes?.map((ep, idx) => {
+                      const isActive = currEpisode?.id === ep.id
+                      const hasLink = ep.video_links?.length > 0
+                      const epCode = `${currSeason.season_number}x${String(ep.episode_number).padStart(2,'0')}`
+                      const epDate = ep.air_date ? new Date(ep.air_date).toLocaleDateString('es',{day:'numeric',month:'short',year:'numeric'}) : null
                       return (
-                        <div key={ep.id} onClick={()=>{selectEpisode(currSeason,ep);setShowSeasonDropdown(false)}} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8,cursor:'pointer',background:isActive?'rgba(37,99,235,0.15)':'transparent',marginBottom:2}}>
-                          <div style={{width:26,height:26,borderRadius:6,background:isActive?'#2563eb':'rgba(255,255,255,0.08)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,flexShrink:0}}>{ep.episode_number}</div>
-                          <span style={{fontSize:12,fontWeight:isActive?700:500,color:isActive?'white':'rgba(255,255,255,0.6)',truncate:true}}>{ep.name}</span>
-                          {ep.video_links?.length>0&&<span style={{marginLeft:'auto',width:6,height:6,borderRadius:'50%',background:'#22c55e',flexShrink:0}} />}
+                        <div key={ep.id}
+                          onClick={() => { selectEpisode(currSeason, ep); setShowSeasonDropdown(false) }}
+                          style={{
+                            display:'flex', alignItems:'center', gap:11, padding:'11px 14px', cursor:'pointer',
+                            borderLeft: isActive ? '3px solid #2563eb' : '3px solid transparent',
+                            background: isActive ? 'rgba(37,99,235,0.12)' : 'transparent',
+                            transition:'background 0.15s',
+                            animation: showSeasonDropdown ? 'ep-slide-in 0.35s ease both' : 'none',
+                            animationDelay: `${idx * 0.045}s`,
+                          }}
+                          onMouseEnter={e => { if(!isActive) e.currentTarget.style.background='rgba(255,255,255,0.05)' }}
+                          onMouseLeave={e => { if(!isActive) e.currentTarget.style.background='transparent' }}>
+
+                          <div style={{
+                            width:34, height:34, borderRadius:9, flexShrink:0,
+                            background: isActive ? '#2563eb' : 'rgba(255,255,255,0.07)',
+                            display:'flex', alignItems:'center', justifyContent:'center',
+                            fontSize:12, fontWeight:900,
+                            color: isActive ? 'white' : 'rgba(255,255,255,0.4)',
+                            boxShadow: isActive ? '0 0 12px rgba(37,99,235,0.5)' : 'none',
+                          }}>{ep.episode_number}</div>
+
+                          <div style={{flex:1, minWidth:0}}>
+                            <p style={{fontSize:10, color:'rgba(255,255,255,0.3)', fontWeight:700, margin:'0 0 2px', letterSpacing:0.5}}>{epCode}</p>
+                            <p style={{fontSize:12, margin:0, fontWeight:isActive?800:600, color:isActive?'white':'rgba(255,255,255,0.75)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{ep.name}</p>
+                            {(ep.runtime || epDate) && (
+                              <p style={{fontSize:10, color:'rgba(255,255,255,0.25)', margin:'3px 0 0', display:'flex', gap:4}}>
+                                {ep.runtime && <span>{ep.runtime}m</span>}
+                                {ep.runtime && epDate && <span>•</span>}
+                                {epDate && <span>{epDate}</span>}
+                              </p>
+                            )}
+                          </div>
+
+                          <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4, flexShrink:0}}>
+                            {ep.vote_average > 0 && <span style={{fontSize:10, fontWeight:800, color:'#f59e0b'}}>★{ep.vote_average.toFixed(1)}</span>}
+                            <span style={{width:7, height:7, borderRadius:'50%', background:hasLink?'#22c55e':'rgba(255,255,255,0.12)', boxShadow:hasLink?'0 0 6px rgba(34,197,94,0.7)':'none'}}/>
+                          </div>
                         </div>
                       )
                     })}
                   </div>
-                )}
-              </div>
+                </div>
+              </>
             )}
           </div>
         </div>
 
         {/* ── TITLE + ACTIONS ── */}
-        <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:20,marginBottom:28}}>
+        <div className="wp-title-row">
           <div style={{flex:1,minWidth:0}}>
             <h1 style={{fontSize:28,fontWeight:900,lineHeight:1.2,margin:'0 0 4px'}}>{content?.title}{releaseDate&&` (${releaseDate.slice(0,4)})`}</h1>
             {originalTitle&&originalTitle!==content?.title&&<p style={{color:'rgba(255,255,255,0.35)',fontSize:13,fontWeight:600,margin:'0 0 10px'}}>{originalTitle}</p>}
@@ -258,7 +342,7 @@ export default function WatchPage() {
               </div>
             )}
           </div>
-          <div style={{display:'flex',gap:8,flexShrink:0}}>
+          <div className="wp-actions-row">
             {user&&<button style={{display:'flex',alignItems:'center',gap:7,background:'rgba(37,99,235,0.15)',border:'1px solid rgba(37,99,235,0.3)',color:'#93c5fd',padding:'10px 18px',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer'}}><List size={15}/>Mi Lista</button>}
             <button style={{display:'flex',alignItems:'center',gap:7,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.6)',padding:'10px 18px',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer'}}><Download size={15}/>Descargar</button>
             <button style={{display:'flex',alignItems:'center',gap:7,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.6)',padding:'10px 18px',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer'}}><Share2 size={15}/>Compartir</button>
@@ -305,6 +389,111 @@ export default function WatchPage() {
           </div>
         )}
       </div>
+
+      <style>{`
+        .wp-container { padding: 0 24px 60px; }
+
+        /* ── HERO ROW ── */
+        .wp-hero-row {
+          display: flex;
+          gap: 18px;
+          align-items: stretch;
+          margin-bottom: 20px;
+        }
+        .wp-poster-col {
+          width: 200px;
+          flex-shrink: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .wp-player-col {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          border-radius: 14px;
+          overflow: hidden;
+          background: #000;
+          box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+          border: 1px solid rgba(255,255,255,0.05);
+          position: relative;
+          min-height: 200px;
+        }
+
+        /* ── TITLE ROW ── */
+        .wp-title-row {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 20px;
+          margin-bottom: 28px;
+        }
+        .wp-actions-row {
+          display: flex;
+          gap: 8px;
+          flex-shrink: 0;
+        }
+
+        /* ── MOBILE (≤ 640px) ── */
+        @media (max-width: 640px) {
+          .wp-container { padding: 0 0 60px; }
+
+          /* Hero: columna, player primero a ancho completo */
+          .wp-hero-row {
+            flex-direction: column;
+            gap: 0;
+            margin-bottom: 0;
+          }
+
+          /* Ocultar poster en móvil (el backdrop lo reemplaza) */
+          .wp-poster-col { display: none; }
+
+          /* Player a ancho completo sin bordes redondeados */
+          .wp-player-col {
+            width: 100%;
+            border-radius: 0;
+            aspect-ratio: 16/9;
+            flex: none;
+            min-height: unset;
+          }
+
+          /* Título stacked */
+          .wp-title-row {
+            flex-direction: column;
+            gap: 12px;
+            padding: 16px;
+          }
+          .wp-actions-row {
+            width: 100%;
+            justify-content: stretch;
+          }
+          .wp-actions-row button {
+            flex: 1;
+            justify-content: center;
+            padding: 10px 8px !important;
+            font-size: 12px !important;
+          }
+        }
+
+        /* ── TABLET (641px - 1024px) ── */
+        @media (min-width: 641px) and (max-width: 1024px) {
+          .wp-container { padding: 0 16px 60px; }
+          .wp-poster-col { width: 150px; }
+          .wp-title-row { flex-wrap: wrap; }
+        }
+
+        /* ── EPISODE STAGGER ANIMATION ── */
+        @keyframes ep-slide-in {
+          from {
+            opacity: 0;
+            transform: translateX(18px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+      `}</style>
     </div>
   )
 }
