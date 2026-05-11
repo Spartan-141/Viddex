@@ -18,10 +18,18 @@ async def extract_cuevana_links(target_url):
         extracted_urls = []
         
         async def handle_request(request):
-            if "player.php" in request.url or "embed" in request.url:
+            url = request.url.lower()
+            # Interceptamos iframes pero también buscamos el archivo de video real
+            if any(ext in url for ext in [".m3u8", ".mp4", ".mkv"]) or "player.php" in url or "embed" in url:
                 if request.url not in [u['url'] for u in extracted_urls]:
-                    extracted_urls.append({"url": request.url, "method": request.method})
-                    print(f"  [DEBUG] Intercepted link: {request.url[:100]}...")
+                    # Categorizar el link
+                    is_direct = any(ext in url for ext in [".m3u8", ".mp4", ".mkv"])
+                    extracted_urls.append({
+                        "url": request.url, 
+                        "method": request.method,
+                        "type": "direct" if is_direct else "iframe"
+                    })
+                    print(f"  [DEBUG] Found {('DIRECT' if is_direct else 'IFRAME')} link: {request.url[:80]}...")
 
         page.on("request", handle_request)
 

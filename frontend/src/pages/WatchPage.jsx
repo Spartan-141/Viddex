@@ -192,7 +192,14 @@ export default function WatchPage() {
                 </button>
               </div>
             ) : showIframe ? (
-              <iframe src={videoSrc+(videoSrc.includes('?')?'&autoplay=1&auto=1':'?autoplay=1&auto=1')} title="Player" style={{flex:1,width:'100%',border:'none'}} allow="autoplay; fullscreen" sandbox="allow-scripts allow-same-origin allow-presentation" />
+              <iframe 
+                src={videoSrc+(videoSrc.includes('?')?'&autoplay=1&auto=1':'?autoplay=1&auto=1')} 
+                title="Player" 
+                style={{flex:1,width:'100%',border:'none'}} 
+                allow="autoplay; fullscreen" 
+                // Sandbox estricto: Bloquea popups, descargas y redirecciones de la página completa.
+                sandbox="allow-scripts allow-same-origin allow-presentation"
+              />
             ) : !playing ? (
               <div onClick={()=>setPlaying(true)} style={{flex:1,cursor:'pointer',position:'relative',display:'flex',alignItems:'center',justifyContent:'center'}}
                 className="group">
