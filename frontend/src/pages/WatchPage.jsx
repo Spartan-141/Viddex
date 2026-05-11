@@ -100,7 +100,24 @@ export default function WatchPage() {
   // Usamos w1280 para mayor compatibilidad y velocidad que 'original'
   const backdropUrl = backdropPath ? tmdbImage(backdropPath, 'w1280') : null
   
-  const videoSrc = activeLink?.signed_url || activeLink?.stream_url
+  // Generar URL oficial de Vimeus como fallback automático
+  const tmdbId = tmdbData?.id || content?.tmdb_id
+  const viewKey = '7QRKmAjYKjm88NhnW8SkddZM6f8FbxSq2ftchKO-0R4'
+  let vimeusUrl = ''
+  
+  if (tmdbId) {
+    const customParams = '&theme=viddex&primary_color=2563eb'
+    if (type === 'pelicula') {
+      vimeusUrl = `https://vimeus.com/e/movie?tmdb=${tmdbId}&view_key=${viewKey}${customParams}`
+    } else if (type === 'series') {
+      vimeusUrl = `https://vimeus.com/e/serie?tmdb=${tmdbId}&se=${currSeason?.season_number}&ep=${currEpisode?.episode_number}&view_key=${viewKey}${customParams}`
+    } else if (type === 'anime') {
+      vimeusUrl = `https://vimeus.com/e/anime?tmdb=${tmdbId}&se=${currSeason?.season_number}&ep=${currEpisode?.episode_number}&view_key=${viewKey}${customParams}`
+    }
+  }
+
+  // Priorizar link directo si existe, sino usar el embed oficial de Vimeus
+  const videoSrc = activeLink?.signed_url || activeLink?.stream_url || vimeusUrl
   const isDirectVideo = url => url&&(url.includes('/stream/')||url.match(/\.(mp4|mkv|mov|m3u8|webm)(\?.*)?$/i))
   const showIframe = !isDirectVideo(videoSrc)
   const {prev,next} = getNeighbors()
@@ -183,12 +200,12 @@ export default function WatchPage() {
 
           {/* RIGHT: Player */}
           <div className="wp-player-col">
-            {!activeLink ? (
+            {!videoSrc ? (
               <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,padding:24,textAlign:'center'}}>
                 <AlertTriangle size={40} style={{color:'#f59e0b',opacity:0.5}} />
-                <div><p style={{fontWeight:800,marginBottom:6}}>Sin enlace disponible</p><p style={{color:'rgba(255,255,255,0.4)',fontSize:13}}>El link expiró o no existe.</p></div>
+                <div><p style={{fontWeight:800,marginBottom:6}}>Sin enlace disponible</p><p style={{color:'rgba(255,255,255,0.4)',fontSize:13}}>No pudimos generar el enlace de Vimeus.</p></div>
                 <button onClick={refreshLinks} style={{background:'#2563eb',color:'white',border:'none',padding:'10px 24px',borderRadius:10,fontWeight:700,fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
-                  <RefreshCw size={14}/> Buscar en Vimeos
+                  <RefreshCw size={14}/> Buscar manualmente
                 </button>
               </div>
             ) : showIframe ? (
@@ -197,8 +214,9 @@ export default function WatchPage() {
                 title="Player" 
                 style={{flex:1,width:'100%',border:'none'}} 
                 allow="autoplay; fullscreen" 
-                // Sandbox estricto: Bloquea popups, descargas y redirecciones de la página completa.
+                // Sandbox estricto y Referrer Policy oficial de Vimeus
                 sandbox="allow-scripts allow-same-origin allow-presentation"
+                referrerPolicy="origin"
               />
             ) : !playing ? (
               <div onClick={()=>setPlaying(true)} style={{flex:1,cursor:'pointer',position:'relative',display:'flex',alignItems:'center',justifyContent:'center'}}
